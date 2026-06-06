@@ -1,0 +1,81 @@
+import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import Dashboard from './pages/Dashboard'
+import Members from './pages/Members'
+import Payments from './pages/Payments'
+
+const NAV = [
+  { to: '/',         label: 'Dashboard', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+      <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+    </svg>
+  )},
+  { to: '/members',  label: 'Clientes', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  )},
+  { to: '/payments', label: 'Pagos', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <rect x="1" y="4" width="22" height="16" rx="2"/>
+      <line x1="1" y1="10" x2="23" y2="10"/>
+    </svg>
+  )},
+]
+
+export default function App() {
+  const location = useLocation()
+  return (
+    <div className="min-h-screen flex">
+      <aside className="w-60 shrink-0 flex flex-col border-r border-surface-border bg-surface-card">
+        <div className="px-5 py-5 border-b border-surface-border">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded bg-brand-500/10 border border-brand-500/30 flex items-center justify-center shadow-brand-sm">
+              <svg viewBox="0 0 32 32" fill="none" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 20 C6 18 5 15 6 12 C7 9 9 8 11 8 L13 6 L15 8 C18 7 21 9 22 13 C23 17 21 20 18 22 L17 26 L14 26 L13 22 C11 22 9 21 8 20Z" fill="#4A4A55" stroke="#6B6B78" strokeWidth="0.5"/>
+                <path d="M13 6 L14 3 L15 6" fill="#E8E8E8" stroke="#ccc" strokeWidth="0.3"/>
+                <circle cx="11.5" cy="13" r="1.2" fill="#E02020"/>
+              </svg>
+            </div>
+            <div>
+              <p className="font-display text-lg leading-none tracking-widest text-white">RHINO</p>
+              <p className="text-xs font-semibold text-brand-500 tracking-[0.2em] uppercase leading-none mt-0.5">Power</p>
+            </div>
+          </div>
+        </div>
+        <nav className="flex-1 p-3 space-y-0.5">
+          {NAV.map(({ to, label, icon }) => {
+            const active = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
+            return (
+              <NavLink key={to} to={to}
+                className={`group flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium
+                  transition-all duration-200 relative overflow-hidden border
+                  ${active
+                    ? 'bg-brand-500/15 text-white border-brand-500/25'
+                    : 'text-gray-500 hover:text-gray-200 hover:bg-surface-raised border-transparent'}`}>
+                {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-brand-500 rounded-r shadow-brand-sm" />}
+                <span className={active ? 'text-brand-400' : 'text-gray-600 group-hover:text-gray-400 transition-colors'}>{icon}</span>
+                <span className="tracking-wide">{label}</span>
+              </NavLink>
+            )
+          })}
+        </nav>
+        <div className="p-4 border-t border-surface-border">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+            <p className="text-xs text-gray-600 font-mono">v0.1.0 · Fase 1</p>
+          </div>
+        </div>
+      </aside>
+      <main className="flex-1 overflow-auto bg-surface">
+        <Routes>
+          <Route path="/"         element={<Dashboard />} />
+          <Route path="/members"  element={<Members />} />
+          <Route path="/payments" element={<Payments />} />
+        </Routes>
+      </main>
+    </div>
+  )
+}
