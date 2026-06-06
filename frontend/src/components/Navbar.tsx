@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom'
 
 const links = [
-  { to: '/',         label: 'Dashboard' },
-  { to: '/members',  label: 'Clientes'  },
-  { to: '/payments', label: 'Pagos'     },
+  { to: '/',           label: 'Dashboard'  },
+  { to: '/members',    label: 'Clientes'   },
+  { to: '/payments',   label: 'Pagos'      },
+  { to: '/attendance', label: 'Asistencia' },
 ]
 
 export function Navbar() {

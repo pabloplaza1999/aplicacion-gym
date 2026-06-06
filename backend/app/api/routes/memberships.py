@@ -12,7 +12,10 @@ from app.schemas.membership import (
     MembershipWithPlanRead,
     MembershipHistoryResponse,
 )
-from app.services.membership_service import MembershipService
+from app.services.membership_service import (
+    ActiveVoucherExistsError,
+    MembershipService,
+)
 
 router = APIRouter(prefix="/members", tags=["memberships"])
 
@@ -39,7 +42,10 @@ def create_membership(
         data.member_id = member_id
 
     service = MembershipService(db)
-    return service.create_membership(data)
+    try:
+        return service.create_membership(data)
+    except ActiveVoucherExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.get("/{member_id}/memberships", response_model=MembershipHistoryResponse)
@@ -111,6 +117,8 @@ def renew_membership(
     service = MembershipService(db)
     try:
         return service.renew_membership(membership_id, data)
+    except ActiveVoucherExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

@@ -5,6 +5,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.membership_repository import MembershipRepository
 from app.schemas.membership import (
     MembershipCreate,
@@ -14,12 +15,22 @@ from app.schemas.membership import (
 )
 
 
+class ActiveVoucherExistsError(Exception):
+    """Raised when a member already has an active, valid voucher.
+
+    Business rule: a member may hold only ONE active voucher at a time.
+    A new voucher cannot be sold/activated while another active voucher is
+    still valid (not expired and with entries remaining).
+    """
+
+
 class MembershipService:
     """Service for membership business logic operations."""
 
     def __init__(self, db: Session):
         """Initialize service with database session."""
         self.repository = MembershipRepository(db)
+        self.attendance_repo = AttendanceRepository(db)
         self.db = db
 
     def _calculate_status(self, end_date: datetime, is_active: bool = True) -> str:
@@ -107,6 +118,36 @@ class MembershipService:
             "plan_duration_days": plan.duration_days if plan else None,
         }
 
+    def _has_active_valid_voucher(self, member_id: int) -> bool:
+        """
+        Whether the member holds an active voucher that is still valid.
+
+        A voucher blocks a new one only when ALL hold:
+        - is_active == True and plan_type == "voucher" (repo filter)
+        - not expired (end_date >= now)
+        - entries remaining > 0, using COUNT(attendances) as source of truth
+
+        An exhausted or expired voucher does NOT block. Date-based (monthly)
+        memberships are never considered here.
+
+        Args:
+            member_id: Member ID
+
+        Returns:
+            True if an active, valid voucher exists for the member
+        """
+        membership = self.repository.get_active_voucher_membership(member_id)
+        if not membership or membership.entries_total is None:
+            return False
+
+        now = datetime.utcnow()
+        if membership.end_date < now:
+            return False  # vencida → no bloquea
+
+        used = self.attendance_repo.count_by_membership(membership.id)
+        remaining = membership.entries_total - used
+        return remaining > 0  # con saldo → bloquea
+
     def create_membership(self, data: MembershipCreate) -> MembershipRead:
         """
         Create a new membership.
@@ -118,6 +159,10 @@ class MembershipService:
 
         Returns:
             Created membership with calculated status
+
+        Raises:
+            ActiveVoucherExistsError: when creating a voucher membership while
+                the member already has an active, valid voucher.
         """
         start_date = data.start_date or datetime.utcnow()
         end_date = self._calculate_end_date(start_date, data.plan_id)
@@ -126,6 +171,14 @@ class MembershipService:
         # memberships keep entries_total = None (unchanged behavior).
         plan = self.repository.get_plan_by_id(data.plan_id)
         entries_total = plan.entry_count if plan and plan.plan_type == "voucher" else None
+
+        # Business rule: only one active valid voucher per member. Applies ONLY
+        # when the NEW plan is a voucher; monthly memberships are unaffected.
+        if plan and plan.plan_type == "voucher" and self._has_active_valid_voucher(data.member_id):
+            raise ActiveVoucherExistsError(
+                "El cliente ya tiene una valera activa vigente. "
+                "No se puede vender otra hasta que se agote o venza."
+            )
 
         membership = self.repository.create(
             member_id=data.member_id,
@@ -214,15 +267,35 @@ class MembershipService:
         if not old_membership:
             raise ValueError(f"Membership {membership_id} not found")
 
+        # Business rule: renewing into a voucher plan is blocked while the
+        # member already holds an active valid voucher (same as create).
+        new_plan = self.repository.get_plan_by_id(data.plan_id)
+        if (
+            new_plan
+            and new_plan.plan_type == "voucher"
+            and self._has_active_valid_voucher(old_membership.member_id)
+        ):
+            raise ActiveVoucherExistsError(
+                "El cliente ya tiene una valera activa vigente. "
+                "No se puede vender otra hasta que se agote o venza."
+            )
+
         # Create new membership starting today
         start_date = datetime.utcnow()
         end_date = self._calculate_end_date(start_date, data.plan_id)
+
+        # Voucher renewals snapshot their entry cap from the new plan (same rule
+        # as create_membership); date-based renewals keep entries_total = None.
+        entries_total = (
+            new_plan.entry_count if new_plan and new_plan.plan_type == "voucher" else None
+        )
 
         new_membership = self.repository.create(
             member_id=old_membership.member_id,
             plan_id=data.plan_id,
             start_date=start_date,
             end_date=end_date,
+            entries_total=entries_total,
         )
 
         result = MembershipRead.from_orm(new_membership)

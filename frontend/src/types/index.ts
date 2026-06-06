@@ -54,6 +54,33 @@ export interface MembershipCreate {
   plan_id: number
 }
 
+// ── Attendance / Valeras ───────────────────────────────────────────────────────
+export interface CheckInResult {
+  member_id: number
+  member_name: string
+  membership_id: number
+  plan_name: string
+  entries_total: number
+  entries_used: number
+  entries_remaining: number
+  end_date: string
+  finished: boolean
+  check_in_at: string
+}
+
+export interface VoucherStatus {
+  member_id: number
+  member_name: string
+  membership_id: number
+  plan_name: string
+  entries_total: number
+  entries_used: number
+  entries_remaining: number
+  end_date: string
+  attended_today: boolean
+  finished: boolean
+}
+
 // ── Payments ──────────────────────────────────────────────────────────────────
 export type PaymentMethod = 'cash' | 'transfer' | 'qr' | 'nequi'
 

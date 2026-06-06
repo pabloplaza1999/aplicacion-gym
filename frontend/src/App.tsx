@@ -2,6 +2,7 @@ import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Members from './pages/Members'
 import Payments from './pages/Payments'
+import Attendance from './pages/Attendance'
 
 const NAV = [
   { to: '/',         label: 'Dashboard', icon: (
@@ -21,6 +22,12 @@ const NAV = [
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
       <rect x="1" y="4" width="22" height="16" rx="2"/>
       <line x1="1" y1="10" x2="23" y2="10"/>
+    </svg>
+  )},
+  { to: '/attendance', label: 'Asistencia', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <path d="M9 11l3 3L22 4"/>
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
     </svg>
   )},
 ]
@@ -74,6 +81,7 @@ export default function App() {
           <Route path="/"         element={<Dashboard />} />
           <Route path="/members"  element={<Members />} />
           <Route path="/payments" element={<Payments />} />
+          <Route path="/attendance" element={<Attendance />} />
         </Routes>
       </main>
     </div>
