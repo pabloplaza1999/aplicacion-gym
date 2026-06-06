@@ -1,0 +1,4 @@
+﻿__pycache__/
+*.pyc
+*.db
+gym_e2e.db

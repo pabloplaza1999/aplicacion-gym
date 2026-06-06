@@ -4,6 +4,7 @@ import type {
   Membership, MembershipWithPlan, MembershipCreate,
   Payment, PaymentCreate, PaymentListResponse,
   DashboardKPI,
+  CheckInResult, VoucherStatus,
 } from '../types'
 
 const BASE = '/api'
@@ -108,6 +109,13 @@ export const createPayment = (memberId: number, data: PaymentCreate): Promise<Pa
 
 export const deletePayment = (paymentId: number): Promise<void> =>
   req(`/payments/${paymentId}`, { method: 'DELETE' })
+
+// ── Attendance / Valeras ───────────────────────────────────────────────────────
+export const checkInAttendance = (document: string): Promise<CheckInResult> =>
+  req('/attendance/check-in', { method: 'POST', body: JSON.stringify({ document }) })
+
+export const getVoucherStatus = (document: string): Promise<VoucherStatus> =>
+  req(`/attendance/voucher-status/${encodeURIComponent(document)}`)
 
 // ── Body Measurements ─────────────────────────────────────────────────────────
 export const getMeasurements = (memberId: number) =>
