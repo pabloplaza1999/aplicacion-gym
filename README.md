@@ -6,19 +6,60 @@ Sistema de gestión para gimnasio local (~100 clientes).
 
 ---
 
+## Instalación en PC nuevo (gimnasio u otro equipo)
+
+Pasos completos para instalar el sistema desde cero en Windows:
+
+```powershell
+# 1. Instalar Docker Desktop
+winget install Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
+
+# 2. Instalar Git
+winget install Git.Git
+
+# 3. Reiniciar el PC
+```
+
+Si Docker Desktop no arranca al reiniciar (error de virtualización):
+
+```powershell
+# Abrir PowerShell como administrador y ejecutar:
+wsl --install
+# Reiniciar el PC nuevamente
+```
+
+```powershell
+# 4. Clonar el proyecto
+git clone https://github.com/pabloplaza1999/aplicacion-gym.git
+cd aplicacion-gym
+
+# 5. Configurar entorno
+cp .env.example .env
+
+# 6. Levantar el sistema (primera vez descarga ~600 MB)
+docker compose up -d
+```
+
+Abrir **http://localhost** en el navegador — el sistema está listo.
+
+**Arranques posteriores:** `docker compose up -d` (segundos, sin descarga).
+
+---
+
 ## Arranque rápido
 
 ### Requisitos
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y corriendo
+- [Git](https://git-scm.com/) instalado
 
 ### Primera ejecución
 
 ```bash
-git clone <url-del-repo>
-cd "APP para Gym"
+git clone https://github.com/pabloplaza1999/aplicacion-gym.git
+cd aplicacion-gym
 cp .env.example .env
-docker compose up
+docker compose up -d
 ```
 
 El sistema queda disponible en:
