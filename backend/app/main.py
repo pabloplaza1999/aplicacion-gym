@@ -13,7 +13,7 @@ from fastapi.encoders import jsonable_encoder
 
 from app.core.config import settings
 from app.database.init_db import init_db
-from app.api.routes import members, memberships, payments, dashboard, plans, body_measurements, attendance, store
+from app.api.routes import members, memberships, payments, dashboard, plans, body_measurements, attendance, store, backup, notifications
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,8 @@ def create_app() -> FastAPI:
     app.include_router(body_measurements.router, prefix="/api")
     app.include_router(attendance.router, prefix="/api")
     app.include_router(store.router, prefix="/api")
+    app.include_router(backup.router, prefix="/api")
+    app.include_router(notifications.router, prefix="/api")
 
     # Health check endpoint
     @app.get("/api/health")

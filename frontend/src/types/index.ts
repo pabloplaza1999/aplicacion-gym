@@ -406,6 +406,25 @@ export interface CarteraResponse {
   kpi: CarteraKPI
 }
 
+// ── Backup ────────────────────────────────────────────────────────────────────
+export interface BackupFile {
+  filename: string
+  created_at: string
+  size_kb: number
+  type: 'automatic' | 'manual'
+}
+
+export interface BackupListResponse {
+  automatic: BackupFile[]
+  manual: BackupFile[]
+}
+
+export interface BackupStatus {
+  last_backup: BackupFile | null
+  hours_ago: number | null
+  indicator: 'green' | 'orange' | 'red'
+}
+
 // ── Body Measurements ─────────────────────────────────────────────────────────
 export interface BodyMeasurementUpsert {
   age?: number | null
@@ -474,4 +493,66 @@ export interface StoreReport {
   top_products: TopProductItem[]
   cartera: CarteraReport
   inventory: InventoryReport
+}
+
+// ── Notifications — Fase 2 ────────────────────────────────────────────────────
+export interface NotificationSettings {
+  smtp_host: string | null
+  smtp_port: number
+  smtp_user: string | null
+  smtp_from_name: string | null
+  smtp_from_email: string | null
+  thresholds: number[]
+  enabled: boolean
+  is_configured: boolean
+  updated_at: string | null
+}
+
+export interface NotificationSettingsUpdate {
+  smtp_host?: string | null
+  smtp_port?: number
+  smtp_user?: string | null
+  smtp_password?: string | null
+  smtp_from_name?: string | null
+  smtp_from_email?: string | null
+  thresholds?: number[]
+  enabled?: boolean
+}
+
+export interface NotificationLogRead {
+  id: number
+  membership_id: number | null
+  member_id: number | null
+  member_name: string | null
+  plan_name: string | null
+  end_date: string | null
+  threshold_days: number
+  channel: string
+  status: 'sent' | 'failed'
+  error_message: string | null
+  sent_at: string
+  recipient: string | null
+}
+
+export interface NotificationHistoryResponse {
+  items: NotificationLogRead[]
+  total: number
+  page: number
+  pages: number
+}
+
+export interface NotificationStatusPanel {
+  is_configured: boolean
+  enabled: boolean
+  last_run_at: string | null
+  sent_today: number
+  failed_today: number
+  pending_count: number
+}
+
+export interface NotificationRunResult {
+  sent: number
+  skipped: number
+  failed: number
+  message: string
 }

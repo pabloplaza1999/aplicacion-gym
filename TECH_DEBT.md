@@ -346,7 +346,14 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-23 | `set_membership_active` carga el plan dos veces en el path de activación | Baja |
 | TD-24 | Modelo `Membership` sin columna `updated_at` (sin trazabilidad de cambios de estado) | Baja |
 | TD-25 | Borrado de email desde formulario no persistido (normalize vacío a undefined, BD no se limpia) | Baja |
-| TD-26 | Backup automático de volumen SQLite no implementado — riesgo de pérdida de datos en producción | Media |
+| TD-26 | Backup automático de volumen SQLite no implementado | ~~Media~~ **RESUELTO** |
+| TD-27 | `import os` sin uso en `backup_service.py` | Baja |
+| TD-28 | `backup_type` en `create_backup` acepta strings arbitrarios sin validación de enum | Baja |
+| TD-29 | Límites de retención hardcodeados en `BackupModal` (30/10) en lugar de leerlos del backend | Baja |
+| TD-30 | `SECRET_KEY` vacía no bloquea arranque — error solo visible al usar SMTP | Baja |
+| TD-31 | Concurrencia scheduler + POST /run puede generar correo duplicado (ventana de segundos) | Baja |
+| TD-32 | `page_size` sin validación de rango en GET /notifications/history | Baja |
+| TD-33 | Scheduler sin healthcheck Docker — fallos solo visibles en logs del contenedor | Baja |
 
 **Resueltos en fixes-post-tienda-b:**
 - `UNIQUE(member_id, check_in_date)` en attendances → migrada a `(membership_id, check_in_date)` ✅
@@ -370,10 +377,98 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 
 ---
 
-## TD-26 — Backup automático de volumen SQLite no implementado
+## TD-27 — `import os` sin uso en `backup_service.py`
+
+- **ID:** TD-27
+- **Estado:** Abierto.
+- **Descripción:** `import os` en la línea 4 de `backup_service.py` no se utiliza en ningún método del servicio.
+- **Riesgo:** Ninguno funcional. Lint warning cosmético.
+- **Módulos afectados:** `backend/app/services/backup_service.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura:** Eliminar la línea.
+
+---
+
+## TD-28 — `backup_type` en `create_backup` acepta strings arbitrarios
+
+- **ID:** TD-28
+- **Estado:** Abierto.
+- **Descripción:** El parámetro `backup_type` de `BackupService.create_backup()` es un `str` libre. Un valor distinto de `'automatic'` o `'manual'` escribe en `manual/` sin validación explícita (el `else` del folder selection es el default).
+- **Riesgo:** Ninguno en producción — el método solo se invoca desde rutas y scheduler controlados. Riesgo futuro si se expone a input externo.
+- **Módulos afectados:** `backend/app/services/backup_service.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura:** Usar `Literal['automatic', 'manual']` como tipo del parámetro o agregar validación explícita.
+
+---
+
+## TD-30 — SECRET_KEY vacía no bloquea arranque del sistema
+
+- **ID:** TD-30
+- **Estado:** Abierto.
+- **Descripción:** Si `SECRET_KEY` no está configurada en `.env`, el sistema arranca normalmente. El error solo aparece al intentar guardar o usar la configuración SMTP (`encrypt`/`decrypt` lanzan `ValueError`). No hay validación en startup.
+- **Riesgo:** Bajo. El operador verá el error en la UI al intentar configurar. No afecta otras funcionalidades.
+- **Módulos afectados:** `backend/app/services/crypto_service.py`, `backend/app/core/config.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura:** Agregar validación en startup que logee un warning si `SECRET_KEY` está vacía y las notificaciones están habilitadas.
+
+---
+
+## TD-31 — Concurrencia scheduler + POST /run puede generar correo duplicado
+
+- **ID:** TD-31
+- **Estado:** Abierto.
+- **Descripción:** El scheduler ejecuta `run_evaluation_cycle()` a las 08:00 AM. Si el operador presiona "Ejecutar ahora" en el Dashboard simultáneamente, ambas instancias cargan `sent_pairs` antes de que la otra haya persistido logs. La deduplicación en memoria (`sent_pairs.add(...)`) es local a cada instancia: un mismo cliente podría recibir el correo dos veces en el mismo ciclo.
+- **Riesgo:** Bajo. Ventana de concurrencia de segundos; solo se activa si el operador ejecuta manualmente exactamente a las 08:00.
+- **Impacto:** Un correo duplicado a uno o más clientes en una ejecución puntual.
+- **Módulos afectados:** `backend/app/services/notification_service.py`, `backend/scheduler/main.py`, `backend/app/api/routes/notifications.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura:** Añadir campo `is_running BOOLEAN DEFAULT FALSE` en `notification_settings` + UPDATE atómico antes del ciclo (advisory lock de SQLite) para serializar ejecuciones concurrentes.
+
+---
+
+## TD-32 — page_size sin validación de rango en GET /notifications/history
+
+- **ID:** TD-32
+- **Estado:** Abierto.
+- **Descripción:** El parámetro `page_size: int = 20` no usa `Query(ge=1, le=100)` a nivel de FastAPI. El repositorio aplica `min(page_size, 100)` correctamente, pero un valor ≤ 0 llega al SQL como `LIMIT 0` (SQLite puede comportarse de forma inconsistente).
+- **Riesgo:** Bajo. Sin autenticación externa, solo uso incorrecto interno.
+- **Impacto:** Respuesta vacía o comportamiento inesperado ante `?page_size=0`.
+- **Módulos afectados:** `backend/app/api/routes/notifications.py` → `get_history`.
+- **Prioridad:** Baja.
+- **Recomendación futura:** `page_size: int = Query(default=20, ge=1, le=100)` en el endpoint.
+
+---
+
+## TD-33 — Scheduler sin healthcheck Docker
+
+- **ID:** TD-33
+- **Estado:** Abierto.
+- **Descripción:** El servicio `scheduler` en `docker-compose.yml` no tiene `healthcheck`. Si el proceso crashea y reinicia en bucle, no hay señal observable más allá de los logs del contenedor.
+- **Riesgo:** Bajo. El scheduler tiene `try/except` en cada job; un fallo de APScheduler es visible en `docker compose logs scheduler`.
+- **Impacto:** Bajo. Sin observabilidad automática del estado del scheduler.
+- **Módulos afectados:** `docker-compose.yml`, `backend/scheduler/main.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura:** Añadir endpoint `/scheduler/health` que devuelva última ejecución de cada job, o escribir un archivo de heartbeat en cada ejecución exitosa verificable por el healthcheck de Docker.
+
+---
+
+## TD-29 — Límites de retención hardcodeados en `BackupModal`
+
+- **ID:** TD-29
+- **Estado:** Abierto.
+- **Descripción:** `BackupModal.tsx` muestra `(data.automatic.length/30)` y `(data.manual.length/10)` como literales. Si `settings.max_auto_backups` o `settings.max_manual_backups` cambian en el backend, el label del frontend quedaría desactualizado.
+- **Riesgo:** Desinformación visual al operador si se ajustan los límites de retención.
+- **Módulos afectados:** `frontend/src/components/BackupModal.tsx`, `backend/app/schemas/backup.py` (requeriría exponer los límites en `BackupListResponse`).
+- **Prioridad:** Baja.
+- **Recomendación futura:** Añadir `max_auto: int` y `max_manual: int` a `BackupListResponse` y consumirlos en el modal.
+
+---
+
+## TD-26 — Backup automático de volumen SQLite no implementado ✅ RESUELTO
 
 - **ID:** TD-26
-- **Estado:** Abierto.
+- **Estado:** Resuelto.
+- **Solución aplicada:** Servicio `scheduler` en Docker Compose ejecuta `sqlite3.backup()` diario a las 02:00 AM. Retención diferenciada 30 automáticos + 10 manuales en carpetas independientes. Backup manual desde Dashboard. `docs/MANUAL_TECNICO.md` actualizado con procedimiento de restauración.
 - **Descripción:** La base de datos `gym.db` vive en el volumen Docker `appparagym_db-data`. No existe mecanismo automatizado de backup. Un `docker compose down -v` ejecutado por error destruye los datos de forma permanente e irreversible. El README documenta el procedimiento manual de backup, pero no hay automatización ni salvaguarda técnica.
 - **Riesgo:** Pérdida total de datos si el operador ejecuta `docker compose down -v` sin hacer backup previo.
 - **Impacto:** Alto en producción si ocurre. Probabilidad baja si el operador sigue el README.

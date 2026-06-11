@@ -18,6 +18,17 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8000"]
 
+    # Notifications — Fernet key for encrypting smtp_password in DB.
+    # Generate once with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # If empty, SMTP password encryption is disabled and test-smtp will fail gracefully.
+    secret_key: str = ""
+
+    # Backup
+    db_path: str = "/app/data/gym.db"
+    backup_dir: str = "/app/data/backups"
+    max_auto_backups: int = 30
+    max_manual_backups: int = 10
+
     class Config:
         env_file = ".env"
         case_sensitive = False

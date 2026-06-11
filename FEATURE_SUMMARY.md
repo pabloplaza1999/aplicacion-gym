@@ -196,6 +196,72 @@ Esta fase establece únicamente la capa de datos; el envío de correos se implem
 | `frontend/src/services/api.ts` | `BASE = (VITE_API_URL \|\| '') + '/api'` |
 | `.env.example` | Advertencia: sin `/api` al final de VITE_API_URL |
 
+🔧 backup-td26 Backups automáticos de la base de datos: servicio `scheduler` en Docker Compose ejecuta backup diario a las 02:00 AM (America/Bogota) usando `sqlite3.backup()` (hot backup nativo). Backup manual disponible desde el Dashboard. Retención diferenciada: `backups/automatic/` máx. 30 archivos, `backups/manual/` máx. 10 archivos — pools independientes. Panel de estado en Dashboard (indicador verde/naranja/rojo + botón "Ver respaldos"). Modal administrativo con lista por tipo y botón de backup manual. `GET /api/backup/status`, `GET /api/backup/list`, `POST /api/backup/manual`. TD-26 resuelto.
+
+### Endpoints nuevos (backup-td26)
+GET /api/backup/status — resumen para Dashboard (último automático + indicador antigüedad)
+GET /api/backup/list — lista completa agrupada por tipo para modal
+POST /api/backup/manual — crea backup manual inmediato
+
+### Archivos nuevos (backup-td26)
+| Archivo | Descripción |
+|---|---|
+| `backend/app/schemas/backup.py` | BackupFile, BackupListResponse, BackupStatus |
+| `backend/app/services/backup_service.py` | Lógica de backup, retención y listado |
+| `backend/app/api/routes/backup.py` | Router con 3 endpoints |
+| `backend/scheduler/__init__.py` | Módulo scheduler |
+| `backend/scheduler/main.py` | APScheduler cron 02:00 AM + backup al arrancar |
+| `frontend/src/components/BackupModal.tsx` | Modal con lista por tipo y backup manual |
+
+### Archivos modificados (backup-td26)
+| Archivo | Cambio |
+|---|---|
+| `backend/app/core/config.py` | db_path, backup_dir, max_auto_backups, max_manual_backups |
+| `backend/app/main.py` | Registrar backup.router |
+| `backend/requirements.txt` | apscheduler==3.10.4 |
+| `docker-compose.yml` | Servicio scheduler activo con volumen db-data |
+| `frontend/src/types/index.ts` | BackupFile, BackupListResponse, BackupStatus |
+| `frontend/src/services/api.ts` | getBackupStatus(), listBackups(), createManualBackup() |
+| `frontend/src/pages/Dashboard.tsx` | Panel Respaldos + BackupModal |
+| `docs/MANUAL_TECNICO.md` | Sección backup reescrita con nuevo flujo automático |
+
+🔧 notificaciones-fase2 Job diario de notificaciones de vencimiento de membresías: evaluación automática a las 08:00 AM (America/Bogota) via APScheduler. Deduplicación por par `(membership_id, threshold_days)` — una sola query anti-N+1. Cifrado Fernet para `smtp_password` (SECRET_KEY en .env). Excluye: frozen, vouchers. Umbrales configurables (default: 7d, 3d, 1d, 0d). Historial paginado en `notification_logs`. Panel operativo en Dashboard (enviados/fallidos/sin-email hoy + botón "Ejecutar ahora"). Página `/configuracion` con formulario SMTP + umbrales + toggle habilitado. `NotificationHistoryModal` con paginación. Arquitectura desacoplada evaluador/canal — preparada para Fase 3 (WhatsApp/SMS).
+
+### Endpoints nuevos (notificaciones-fase2)
+GET /api/notifications/settings — configuración SMTP + umbrales
+PUT /api/notifications/settings — guarda configuración
+POST /api/notifications/test-smtp — envía correo de prueba
+GET /api/notifications/status — estado operativo (enviados/fallidos/sin-email hoy)
+GET /api/notifications/history — historial paginado (?page=1&page_size=20)
+POST /api/notifications/run — ejecuta ciclo manualmente
+
+### Archivos nuevos (notificaciones-fase2)
+| Archivo | Descripción |
+|---|---|
+| `backend/app/models/notification.py` | NotificationLog + NotificationSettings |
+| `backend/app/schemas/notification.py` | Pydantic schemas |
+| `backend/app/repositories/notification_repository.py` | CRUD + deduplicación + historial paginado |
+| `backend/app/services/crypto_service.py` | encrypt/decrypt Fernet |
+| `backend/app/services/email_service.py` | Adaptador SMTP (smtplib) |
+| `backend/app/services/notification_service.py` | Evaluador + orquestador |
+| `backend/app/api/routes/notifications.py` | Router con 6 endpoints |
+| `frontend/src/pages/Settings.tsx` | Página /configuracion |
+| `frontend/src/components/NotificationHistoryModal.tsx` | Modal historial paginado |
+
+### Archivos modificados (notificaciones-fase2)
+| Archivo | Cambio |
+|---|---|
+| `backend/requirements.txt` | cryptography==41.0.7 |
+| `backend/app/core/config.py` | secret_key para Fernet |
+| `backend/app/models/__init__.py` | Registrar modelos nuevos |
+| `backend/app/database/init_db.py` | Importar modelos para create_all |
+| `backend/app/main.py` | Registrar notifications.router |
+| `backend/scheduler/main.py` | Job 08:00 AM + run_notification_job() |
+| `frontend/src/types/index.ts` | NotificationSettings, NotificationLogRead, NotificationHistoryResponse, NotificationStatusPanel, NotificationRunResult |
+| `frontend/src/services/api.ts` | 6 funciones de notificación |
+| `frontend/src/pages/Dashboard.tsx` | Panel operativo Notificaciones |
+| `frontend/src/App.tsx` | Ruta /configuracion + entrada sidebar |
+
 ## Próximo paso
-Notificaciones Fase 2: APScheduler + job diario de evaluación de vencimientos (sin integración externa)
+Notificaciones Fase 3: canales adicionales (WhatsApp/SMS) o plantillas personalizables
 Tienda Fase D: exportación de reportes o mejoras operativas

@@ -281,6 +281,39 @@ export const getStoreReport = (dateFrom?: string, dateTo?: string): Promise<Stor
   return req(`/store/reports${qs ? `?${qs}` : ''}`)
 }
 
+// ── Backup ────────────────────────────────────────────────────────────────────
+export const getBackupStatus = (): Promise<import('../types').BackupStatus> =>
+  req('/backup/status')
+
+export const listBackups = (): Promise<import('../types').BackupListResponse> =>
+  req('/backup/list')
+
+export const createManualBackup = (): Promise<import('../types').BackupFile> =>
+  req('/backup/manual', { method: 'POST' })
+
+// ── Notifications — Fase 2 ────────────────────────────────────────────────────
+export const getNotificationSettings = (): Promise<import('../types').NotificationSettings> =>
+  req('/notifications/settings')
+
+export const saveNotificationSettings = (
+  data: import('../types').NotificationSettingsUpdate
+): Promise<import('../types').NotificationSettings> =>
+  req('/notifications/settings', { method: 'PUT', body: JSON.stringify(data) })
+
+export const testSmtp = (): Promise<{ message: string }> =>
+  req('/notifications/test-smtp', { method: 'POST' })
+
+export const getNotificationStatus = (): Promise<import('../types').NotificationStatusPanel> =>
+  req('/notifications/status')
+
+export const getNotificationHistory = (
+  page = 1, pageSize = 20
+): Promise<import('../types').NotificationHistoryResponse> =>
+  req(`/notifications/history?page=${page}&page_size=${pageSize}`)
+
+export const runNotificationsNow = (): Promise<import('../types').NotificationRunResult> =>
+  req('/notifications/run', { method: 'POST' })
+
 // ── Body Measurements ─────────────────────────────────────────────────────────
 export const getMeasurements = (memberId: number) =>
   req<import('../types').BodyMeasurement>(`/members/${memberId}/measurements`).catch((): null => null)
