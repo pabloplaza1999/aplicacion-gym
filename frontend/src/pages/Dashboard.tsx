@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
-import { getDashboard } from '../services/api'
-import type { DashboardKPI, AlertsSummary, MembershipAlert, DebtorAlert, LowStockAlertItem, MembersByPlan } from '../types'
+import { Link } from 'react-router-dom'
+import { getDashboard, getBackupStatus, getNotificationStatus, runNotificationsNow } from '../services/api'
+import type { DashboardKPI, AlertsSummary, MembershipAlert, DebtorAlert, LowStockAlertItem, MembersByPlan, BackupStatus, NotificationStatusPanel } from '../types'
 import StatCard from '../components/StatCard'
 import Spinner from '../components/Spinner'
+import BackupModal from '../components/BackupModal'
+import NotificationHistoryModal from '../components/NotificationHistoryModal'
 
 function fmt(n: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
@@ -138,59 +141,52 @@ function AlertsPanel({ alerts }: { alerts: AlertsSummary }) {
   const debtorItems  = activeTab === 'cartera'    ? (alerts.top_debtors    ?? []) : []
   const stockItems   = activeTab === 'low_stock'  ? (alerts.low_stock_items ?? []) : []
 
-  function handleTabChange(key: AlertTab) {
-    setActiveTab(key)
-    setQuery('')
-    setOverdueFilter('all')
-  }
-
   return (
-    <div className="card space-y-5">
+    <div className="card space-y-4">
       <div className="flex items-center gap-3">
         <div className="w-1 h-5 bg-brand-500 rounded-full shadow-brand-sm" />
         <h2 className="font-display text-lg tracking-widest text-white uppercase">Alertas operativas</h2>
-        {total === 0 && <span className="ml-auto text-xs font-mono text-gray-600">Sin alertas</span>}
+        <span className="text-xs font-mono text-gray-600">{total} total</span>
       </div>
 
-      {/* Executive summary chips */}
+      {/* Tabs */}
       <div className="flex flex-wrap gap-2">
         {TAB_CONFIG.map(t => {
           const count = countFor(alerts, t.key)
-          const isActive = activeTab === t.key
+          const active = activeTab === t.key
           return (
             <button
               key={t.key}
-              onClick={() => handleTabChange(t.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold font-mono transition-all duration-150 ${t.chipColor} ${isActive ? 'ring-1 ring-current' : 'opacity-70 hover:opacity-100'}`}
+              onClick={() => { setActiveTab(t.key); setQuery(''); setOverdueFilter('all') }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono border transition-all
+                ${active ? `${t.chipColor} border` : 'border-surface-border text-gray-600 hover:text-gray-400 hover:border-gray-600'}`}
             >
-              <span className={`text-base leading-none font-bold ${t.color}`}>{count}</span>
-              <span>{t.label}</span>
+              {t.label}
+              {count > 0 && <span className={`font-bold ${active ? '' : t.color}`}>{count}</span>}
             </button>
           )
         })}
       </div>
 
-      {/* Search + overdue filter pills — membership tabs only */}
+      {/* Search */}
       {isMembership && (
-        <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
           <input
-            type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Buscar por nombre o documento…"
-            className="w-full bg-surface-raised border border-surface-border rounded-lg px-3 py-2 text-sm font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500 transition-colors"
+            placeholder="Buscar por nombre o cédula…"
+            className="flex-1 min-w-[180px] bg-surface-raised border border-surface-border rounded px-3 py-1.5 text-xs text-white font-mono placeholder-gray-600 focus:outline-none focus:border-brand-500"
           />
           {isExpiredTab && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-1">
               {OVERDUE_FILTERS.map(f => (
                 <button
                   key={f.key}
                   onClick={() => setOverdueFilter(f.key)}
-                  className={`px-3 py-1 rounded-full border text-xs font-mono font-semibold transition-all duration-150 ${
-                    overdueFilter === f.key
-                      ? 'bg-red-500/20 text-red-400 border-red-500/40 ring-1 ring-red-500/40'
-                      : 'bg-surface-raised text-gray-500 border-surface-border hover:text-gray-300'
-                  }`}
+                  className={`px-2.5 py-1 rounded text-xs font-mono border transition-all
+                    ${overdueFilter === f.key
+                      ? 'bg-brand-500/15 text-brand-400 border-brand-500/30'
+                      : 'border-surface-border text-gray-600 hover:text-gray-400'}`}
                 >
                   {f.label}
                 </button>
@@ -200,75 +196,64 @@ function AlertsPanel({ alerts }: { alerts: AlertsSummary }) {
         </div>
       )}
 
-      {/* List — membership tabs */}
+      {/* Content */}
       {isMembership && (
-        memberItems.length === 0 ? (
-          <p className="text-gray-600 text-sm font-mono py-2">
-            {rawMemberItems.length > 0 ? 'Sin resultados para los filtros aplicados' : 'Sin alertas en esta categoría'}
-          </p>
-        ) : (
-          <div className="divide-y divide-surface-border">
-            {memberItems.map(item => (
-              <div key={item.membership_id} className="py-3 flex items-center justify-between group hover:bg-surface-raised/40 hover:px-2 hover:-mx-2 rounded transition-all duration-150 cursor-default">
-                <div>
-                  <p className={`text-sm font-semibold ${cfg.color}`}>{item.member_name}</p>
-                  <p className="text-xs text-gray-600 font-mono mt-0.5">
-                    {item.plan_name}
-                    {item.document ? ` · ${item.document}` : ''}
-                    {item.phone ? ` · ${item.phone}` : ''}
-                    {isExpiredTab && (item.days_overdue ?? 0) > 0 ? ` · ${item.days_overdue}d vencido` : ''}
-                  </p>
+        memberItems.length === 0
+          ? <p className="text-gray-600 text-xs font-mono py-2">Sin resultados.</p>
+          : <div className="divide-y divide-surface-border">
+              {memberItems.map((item, i) => (
+                <div key={i} className="py-3 flex items-center justify-between group hover:bg-surface-raised/40 hover:px-2 hover:-mx-2 rounded transition-all duration-150 cursor-default">
+                  <div>
+                    <p className="text-sm font-semibold text-white group-hover:text-brand-400 transition-colors">{item.member_name}</p>
+                    <p className="text-xs text-gray-600 font-mono mt-0.5">
+                      {item.plan_name}
+                      {item.document && <> · {item.document}</>}
+                      {isExpiredTab && item.days_overdue != null && item.days_overdue > 0 && (
+                        <span className="text-red-400"> · {item.days_overdue}d vencida</span>
+                      )}
+                    </p>
+                  </div>
+                  <span className={`text-xs font-mono shrink-0 ml-4 ${cfg.color}`}>{item.end_date}</span>
                 </div>
-                <span className="text-xs font-mono text-gray-500 shrink-0 ml-4">{item.end_date}</span>
-              </div>
-            ))}
-          </div>
-        )
+              ))}
+            </div>
       )}
 
-      {/* List — cartera tab */}
       {activeTab === 'cartera' && (
-        debtorItems.length === 0 ? (
-          <p className="text-gray-600 text-sm font-mono py-2">Sin deudores activos</p>
-        ) : (
-          <div className="divide-y divide-surface-border">
-            {debtorItems.map(item => (
-              <div key={item.customer_id} className="py-3 flex items-center justify-between group hover:bg-surface-raised/40 hover:px-2 hover:-mx-2 rounded transition-all duration-150 cursor-default">
-                <div>
-                  <p className="text-sm font-semibold text-amber-400">{item.customer_name}</p>
-                  <p className="text-xs text-gray-600 font-mono mt-0.5">
-                    {item.days_overdue > 0 ? `${item.days_overdue}d de antigüedad` : 'hoy'}
-                    {item.oldest_sale_date ? ` · desde ${item.oldest_sale_date}` : ''}
-                  </p>
+        debtorItems.length === 0
+          ? <p className="text-gray-600 text-xs font-mono py-2">Sin deudores.</p>
+          : <div className="divide-y divide-surface-border">
+              {debtorItems.map((d: DebtorAlert, i) => (
+                <div key={i} className="py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{d.customer_name}</p>
+                    <p className="text-xs text-gray-600 font-mono mt-0.5">
+                      {d.days_overdue > 0 && <>{d.days_overdue}d · </>}
+                      {d.oldest_sale_date}
+                    </p>
+                  </div>
+                  <span className="text-amber-400 text-sm font-mono font-semibold ml-4">{fmt(d.outstanding_balance)}</span>
                 </div>
-                <span className="text-amber-400 text-sm font-mono font-semibold shrink-0 ml-4">
-                  {fmt(item.outstanding_balance)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )
+              ))}
+            </div>
       )}
 
-      {/* List — bajo stock tab */}
       {activeTab === 'low_stock' && (
-        stockItems.length === 0 ? (
-          <p className="text-gray-600 text-sm font-mono py-2">Sin productos bajo stock mínimo</p>
-        ) : (
-          <div className="divide-y divide-surface-border">
-            {stockItems.map(item => (
-              <div key={item.product_id} className="py-3 flex items-center justify-between group hover:bg-surface-raised/40 hover:px-2 hover:-mx-2 rounded transition-all duration-150 cursor-default">
-                <div>
-                  <p className="text-sm font-semibold text-emerald-400">{item.product_name}</p>
-                  <p className="text-xs text-gray-600 font-mono mt-0.5">mínimo {item.min_stock} uds</p>
+        stockItems.length === 0
+          ? <p className="text-gray-600 text-xs font-mono py-2">Sin productos bajo stock.</p>
+          : <div className="divide-y divide-surface-border">
+              {stockItems.map((item: LowStockAlertItem, i) => (
+                <div key={i} className="py-3 flex items-center justify-between group hover:bg-surface-raised/40 hover:px-2 hover:-mx-2 rounded transition-all duration-150 cursor-default">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-400">{item.product_name}</p>
+                    <p className="text-xs text-gray-600 font-mono mt-0.5">mínimo {item.min_stock} uds</p>
+                  </div>
+                  <span className="text-xs font-mono text-gray-400 shrink-0 ml-4">
+                    {item.stock} / {item.min_stock}
+                  </span>
                 </div>
-                <span className="text-xs font-mono text-gray-400 shrink-0 ml-4">
-                  {item.stock} / {item.min_stock}
-                </span>
-              </div>
-            ))}
-          </div>
-        )
+              ))}
+            </div>
       )}
     </div>
   )
@@ -280,10 +265,40 @@ export default function Dashboard() {
   const [kpi, setKpi] = useState<DashboardKPI | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null)
+  const [showBackupModal, setShowBackupModal] = useState(false)
+  const [notifStatus, setNotifStatus] = useState<NotificationStatusPanel | null>(null)
+  const [showNotifModal, setShowNotifModal] = useState(false)
+  const [runningNotif, setRunningNotif] = useState(false)
+  const [runResult, setRunResult] = useState<string | null>(null)
 
   useEffect(() => {
-    getDashboard().then(setKpi).catch(e => setError(e.message)).finally(() => setLoading(false))
+    Promise.allSettled([
+      getDashboard(),
+      getBackupStatus(),
+      getNotificationStatus(),
+    ]).then(([kpiRes, backupRes, notifRes]) => {
+      if (kpiRes.status === 'fulfilled') setKpi(kpiRes.value)
+      else setError((kpiRes.reason as Error).message)
+      if (backupRes.status === 'fulfilled') setBackupStatus(backupRes.value)
+      if (notifRes.status === 'fulfilled') setNotifStatus(notifRes.value)
+    }).finally(() => setLoading(false))
   }, [])
+
+  async function handleRunNotif() {
+    setRunningNotif(true)
+    setRunResult(null)
+    try {
+      const res = await runNotificationsNow()
+      setRunResult(res.message)
+      const updated = await getNotificationStatus()
+      setNotifStatus(updated)
+    } catch (e: any) {
+      setRunResult(e.message || 'Error al ejecutar.')
+    } finally {
+      setRunningNotif(false)
+    }
+  }
 
   if (loading) return <Spinner />
   if (error) return <div className="p-8 text-brand-400 text-sm font-mono">{error}</div>
@@ -395,6 +410,118 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Respaldos */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-5 bg-brand-500 rounded-full shadow-brand-sm" />
+            <h2 className="font-display text-lg tracking-widest text-white uppercase">Respaldos</h2>
+            {backupStatus && (
+              <span className={`w-2 h-2 rounded-full ${
+                backupStatus.indicator === 'green'  ? 'bg-success-400' :
+                backupStatus.indicator === 'orange' ? 'bg-energy-400' : 'bg-red-500'
+              }`} />
+            )}
+          </div>
+          <button
+            onClick={() => setShowBackupModal(true)}
+            className="text-xs text-brand-400 hover:text-brand-300 font-mono underline underline-offset-2 transition-colors"
+          >
+            Ver respaldos
+          </button>
+        </div>
+        <p className="text-sm text-gray-500 font-mono mt-3">
+          {backupStatus?.last_backup
+            ? <>Último respaldo: <span className="text-gray-300">{backupStatus.last_backup.filename}</span> · hace {backupStatus.hours_ago}h</>
+            : backupStatus
+              ? <span className="text-red-400">Sin respaldos registrados</span>
+              : <span className="text-gray-600">Cargando estado del respaldo...</span>
+          }
+        </p>
+      </div>
+
+      {/* Notificaciones */}
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-5 bg-brand-500 rounded-full shadow-brand-sm" />
+            <h2 className="font-display text-lg tracking-widest text-white uppercase">Notificaciones</h2>
+            {notifStatus && (
+              <span className={`w-2 h-2 rounded-full ${
+                !notifStatus.is_configured ? 'bg-red-500' :
+                !notifStatus.enabled       ? 'bg-gray-500' : 'bg-success-400'
+              }`} />
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleRunNotif}
+              disabled={runningNotif}
+              className="text-xs text-brand-400 hover:text-brand-300 font-mono underline underline-offset-2 transition-colors disabled:opacity-40"
+            >
+              {runningNotif ? 'Ejecutando...' : 'Ejecutar ahora'}
+            </button>
+            <button
+              onClick={() => setShowNotifModal(true)}
+              className="text-xs text-brand-400 hover:text-brand-300 font-mono underline underline-offset-2 transition-colors"
+            >
+              Ver historial
+            </button>
+            <Link
+              to="/configuracion"
+              className="text-xs text-gray-500 hover:text-gray-300 font-mono underline underline-offset-2 transition-colors"
+            >
+              Configurar
+            </Link>
+          </div>
+        </div>
+
+        {notifStatus && !notifStatus.is_configured && (
+          <p className="text-xs text-energy-400 font-mono">
+            ⚠ SMTP no configurado — las notificaciones están desactivadas.
+            <Link to="/configuracion" className="ml-2 text-brand-400 hover:text-brand-300 underline underline-offset-2">Configurar ahora</Link>
+          </p>
+        )}
+
+        {notifStatus && notifStatus.is_configured && (
+          <div className="grid grid-cols-3 gap-4 pt-1">
+            <div>
+              <p className="text-xs text-gray-600 font-mono">Enviados hoy</p>
+              <p className={`text-xl font-bold font-mono ${notifStatus.sent_today > 0 ? 'text-success-400' : 'text-gray-600'}`}>
+                {notifStatus.sent_today}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-600 font-mono">Fallidos hoy</p>
+              <p className={`text-xl font-bold font-mono ${notifStatus.failed_today > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                {notifStatus.failed_today}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-600 font-mono">Sin email</p>
+              <p className={`text-xl font-bold font-mono ${notifStatus.pending_count > 0 ? 'text-energy-400' : 'text-gray-600'}`}>
+                {notifStatus.pending_count}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {notifStatus?.last_run_at && (
+          <p className="text-xs text-gray-600 font-mono">
+            Último envío: <span className="text-gray-400">
+              {new Date(notifStatus.last_run_at).toLocaleString('es-CO')}
+            </span>
+          </p>
+        )}
+
+        {runResult && (
+          <p className="text-xs text-gray-400 font-mono border-t border-surface-border pt-2">{runResult}</p>
+        )}
+      </div>
+
+      {showBackupModal && <BackupModal onClose={() => setShowBackupModal(false)} />}
+      {showNotifModal  && <NotificationHistoryModal onClose={() => setShowNotifModal(false)} />}
     </div>
   )
 }

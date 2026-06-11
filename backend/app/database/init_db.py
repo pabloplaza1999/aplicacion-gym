@@ -14,6 +14,7 @@ from app.models.product import ProductCategory, Product  # noqa: F401
 from app.models.inventory import InventoryMovement  # noqa: F401
 from app.models.sale import Sale, SaleItem  # noqa: F401
 from app.models.customer import Customer, CreditPayment  # noqa: F401
+from app.models.notification import NotificationLog, NotificationSettings  # noqa: F401
 
 
 def _add_column_if_missing(table: str, column: str, ddl: str) -> None:

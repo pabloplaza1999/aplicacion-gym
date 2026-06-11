@@ -4,6 +4,7 @@ import Members from './pages/Members'
 import Payments from './pages/Payments'
 import Attendance from './pages/Attendance'
 import Store from './pages/Store'
+import Settings from './pages/Settings'
 
 const NAV = [
   { to: '/',         label: 'Dashboard', icon: (
@@ -36,6 +37,15 @@ const NAV = [
       <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
       <line x1="3" y1="6" x2="21" y2="6"/>
       <path d="M16 10a4 4 0 0 1-8 0"/>
+    </svg>
+  )},
+]
+
+const NAV_BOTTOM = [
+  { to: '/configuracion', label: 'Configuración', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
     </svg>
   )},
 ]
@@ -77,20 +87,38 @@ export default function App() {
             )
           })}
         </nav>
-        <div className="p-4 border-t border-surface-border">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
-            <p className="text-xs text-gray-600 font-mono">v0.1.0 · Fase 1</p>
+        <div className="p-3 border-t border-surface-border space-y-0.5">
+          {NAV_BOTTOM.map(({ to, label, icon }) => {
+            const active = location.pathname.startsWith(to)
+            return (
+              <NavLink key={to} to={to}
+                className={`group flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium
+                  transition-all duration-200 relative overflow-hidden border
+                  ${active
+                    ? 'bg-gradient-to-r from-brand-500/20 to-transparent text-white border-brand-500/25'
+                    : 'text-gray-500 hover:text-gray-200 hover:bg-surface-raised/80 border-transparent'}`}>
+                {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand-500 rounded-r shadow-brand-sm transition-all duration-200" />}
+                <span className={active ? 'text-brand-400' : 'text-gray-600 group-hover:text-gray-400 transition-colors'}>{icon}</span>
+                <span className="tracking-wide">{label}</span>
+              </NavLink>
+            )
+          })}
+          <div className="px-3 pt-2">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+              <p className="text-xs text-gray-600 font-mono">v0.1.0 · Fase 2</p>
+            </div>
           </div>
         </div>
       </aside>
       <main className="flex-1 overflow-auto bg-surface">
         <Routes>
-          <Route path="/"         element={<Dashboard />} />
-          <Route path="/members"  element={<Members />} />
-          <Route path="/payments" element={<Payments />} />
-          <Route path="/attendance" element={<Attendance />} />
-          <Route path="/tienda"     element={<Store />} />
+          <Route path="/"              element={<Dashboard />} />
+          <Route path="/members"       element={<Members />} />
+          <Route path="/payments"      element={<Payments />} />
+          <Route path="/attendance"    element={<Attendance />} />
+          <Route path="/tienda"        element={<Store />} />
+          <Route path="/configuracion" element={<Settings />} />
         </Routes>
       </main>
     </div>
