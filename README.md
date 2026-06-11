@@ -171,9 +171,40 @@ Agregar al cron del host (Linux/Mac):
 
 ---
 
+## Modos de ejecución
+
+El proyecto tiene dos formas de correr. Usa la que corresponda según el contexto:
+
+| | `INICIAR.bat` | `docker compose up -d` |
+|---|---|---|
+| **Cuándo usarlo** | Desarrollo — editar código | Uso diario en el gimnasio |
+| **Requiere** | Python + Node instalados | Solo Docker Desktop |
+| **Frontend** | `http://localhost:5173` | `http://localhost` |
+| **Backend** | `http://localhost:8000` | `http://localhost:8000` |
+| **Base de datos** | `backend/gym.db` (archivo local) | Volumen Docker (aislado) |
+| **Recarga automática** | Sí (`--reload`) | No (requiere rebuild) |
+
+### INICIAR.bat — desarrollo local
+
+Doble clic en `INICIAR.bat`. Abre dos ventanas de consola (backend y frontend) y lanza el navegador en `http://localhost:5173`.
+
+Útil cuando estás modificando código: el backend recarga solo al guardar cambios en Python, y Vite recarga el frontend en tiempo real.
+
+> Los datos de esta modalidad se guardan en `backend/gym.db` (archivo local), **separado** del volumen Docker.
+
+### docker compose up — producción / uso diario
+
+```powershell
+docker compose up -d
+```
+
+Recomendado para el PC del gimnasio y cualquier despliegue fuera del entorno de desarrollo.
+
+---
+
 ## Desarrollo local sin Docker
 
-Para desarrollo sin contenedores:
+Si no tienes Docker y necesitas correr el proyecto manualmente:
 
 ```bash
 # Backend
