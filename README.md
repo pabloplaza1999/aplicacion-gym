@@ -71,7 +71,7 @@ DATABASE_URL=sqlite:////app/data/gym.db
 # Orígenes permitidos para CORS
 CORS_ORIGINS=["http://localhost", "http://localhost:80"]
 
-# URL del backend que el navegador usará para llamar a la API
+# Origen del servidor backend — solo host y puerto, SIN /api al final
 VITE_API_URL=http://localhost:8000
 ```
 
@@ -79,6 +79,9 @@ VITE_API_URL=http://localhost:8000
 
 `VITE_API_URL` se embebe en el build estático del frontend al ejecutar `docker compose up`.
 **Debe configurarse antes de levantar el sistema**, no tiene efecto en caliente.
+
+> ⚠️ `VITE_API_URL` debe contener únicamente el origen del servidor (`http://host:puerto`).
+> **No incluir `/api` al final** — el sistema lo agrega automáticamente.
 
 ```env
 # En servidor con IP pública o dominio:

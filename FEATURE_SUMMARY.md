@@ -189,6 +189,13 @@ Esta fase establece únicamente la capa de datos; el envío de correos se implem
 ### Deuda técnica (portabilidad-docker)
 - TD-26 (Media): backup automático de volumen SQLite no implementado. Procedimiento manual documentado en `README.md`. Pendiente automatización con cron en host antes de despliegue en producción real.
 
+🔧 fix-vite-api-url Bug: frontend no cargaba datos en Docker — `VITE_API_URL=http://localhost:8000` reemplazaba `/api` en lugar de precederlo, resultando en `GET /members` (404) en vez de `GET /api/members` (200). Fix: `BASE = (VITE_API_URL || '') + '/api'` — el origen del servidor y el prefijo `/api` son responsabilidades separadas. Desarrollo local sin Docker sin regresión (`'' + '/api'` = `'/api'`). `.env.example` actualizado con advertencia: `VITE_API_URL` no debe incluir `/api`.
+
+| Archivo | Cambio |
+|---|---|
+| `frontend/src/services/api.ts` | `BASE = (VITE_API_URL \|\| '') + '/api'` |
+| `.env.example` | Advertencia: sin `/api` al final de VITE_API_URL |
+
 ## Próximo paso
 Notificaciones Fase 2: APScheduler + job diario de evaluación de vencimientos (sin integración externa)
 Tienda Fase D: exportación de reportes o mejoras operativas

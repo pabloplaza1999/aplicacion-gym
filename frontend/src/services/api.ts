@@ -15,7 +15,8 @@ import type {
   StoreReport,
 } from '../types'
 
-const BASE = import.meta.env.VITE_API_URL || '/api'
+// VITE_API_URL = origen del servidor (ej: http://localhost:8000). El /api se agrega aquí siempre.
+const BASE = (import.meta.env.VITE_API_URL || '') + '/api'
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
