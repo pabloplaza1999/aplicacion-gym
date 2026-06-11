@@ -26,6 +26,14 @@ class Membership(Base):
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     # Entries granted by a voucher membership (valera). NULL = date-based membership.
     entries_total = Column(Integer, nullable=True)
+    # Freeze/pause support: set when membership is frozen; cleared on unfreeze.
+    frozen_at = Column(DateTime, nullable=True)
+    frozen_days_remaining = Column(Integer, nullable=True)
+    # Counts completed freeze cycles for this membership (incremented on each unfreeze).
+    freeze_count = Column(Integer, default=0, nullable=False)
+    # Internal notification control: set by the notification job when an expiry alert is sent.
+    # Never written by membership services, routes, or frontend.
+    last_notified_at = Column(DateTime, nullable=True)
 
     def __repr__(self) -> str:
         return (

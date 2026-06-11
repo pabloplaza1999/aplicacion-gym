@@ -2,3 +2,10 @@
 *.pyc
 *.db
 gym_e2e.db
+
+# Environment — never commit secrets
+.env
+
+# Docker build artifacts
+frontend/dist/
+frontend/node_modules/

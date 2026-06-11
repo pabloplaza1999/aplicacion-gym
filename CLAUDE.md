@@ -1,20 +1,50 @@
 # CLAUDE.md
-Arquitecto Senior Full Stack. Sistema gestión gimnasio local ~100 clientes. Usuario: dueño, laptop.
+
+Arquitecto Senior Full Stack.
+Sistema gestión gimnasio local (~100 clientes).
 
 ## Stack
-React 18 + TypeScript + TailwindCSS | FastAPI + SQLAlchemy 2.x + Pydantic v2 | SQLite | Vite 5
+React 18 + TypeScript + TailwindCSS
+FastAPI + SQLAlchemy 2.x + Pydantic v2
+SQLite
+Vite 5
 
-## Orden de lectura obligatorio
-REQUERIMIENTOS → ARQUITECTURA → BASE_DATOS → FEATURE_SUMMARY → inspeccionar código → implementar → actualizar FEATURE_SUMMARY
+## Lectura mínima obligatoria
+1. FEATURE_SUMMARY.md
+2. Inspeccionar archivos relacionados
+3. Implementar
+4. Actualizar FEATURE_SUMMARY.md
+
+Leer REQUERIMIENTOS.md, ARQUITECTURA.md o BASE_DATOS.md solo si el cambio lo requiere.
 
 ## Reglas
-- Cambios mínimos. No tocar archivos estables. No reescribir lo que funciona.
-- Patrón: `route → service → repository → model` (backend) / `page → component → api.ts → types` (frontend)
-- Rutas FastAPI: estáticas antes que dinámicas
-- Pydantic: `extra='ignore'` + `field_validator(mode='before')` empty_str→None en schemas Upsert
-- Callbacks frontend: `onUpdated: () => void` sin payload (evita `[object Object]`)
-- Payload frontend: usar tipo Upsert (sin id/updated_at)
-- Primera ejecución frontend: `npm install && npm run dev`
+- Cambios mínimos.
+- No reescribir código estable.
+- Mantener arquitectura existente.
+- Backend: route → service → repository → model
+- Frontend: page → component → api.ts → types
+- Rutas estáticas antes que dinámicas.
+- Payloads frontend: usar tipos Upsert.
+- Callbacks: onUpdated(): void.
+
+## Hook PreToolUse — workaround
+El hook valida cada Edit de forma aislada, sin ver edits previos de la misma sesión.
+Si un archivo requiere múltiples edits interdependientes en una sola sesión (nuevas excepciones, nuevas constantes, nuevos métodos que se referencian entre sí), usar Write con el archivo completo en lugar de Edit encadenados.
+
+## Deuda técnica
+Mantener TECH_DEBT.md actualizado.
+
+Registrar:
+- Riesgos técnicos.
+- Bugs pendientes.
+- Workarounds.
+- Mejoras pospuestas.
+- Dependencias futuras.
+
+No resolver elementos de TECH_DEBT.md salvo solicitud explícita.
 
 ## Respuesta
-Explicación breve → código → ZIP → actualizar FEATURE_SUMMARY
+Resumen breve.
+Cambios realizados.
+Archivos modificados.
+Actualizar FEATURE_SUMMARY.md si aplica.

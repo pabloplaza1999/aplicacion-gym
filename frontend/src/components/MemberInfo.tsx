@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react'
 import { updateMember, getMeasurements, upsertMeasurements } from '../services/api'
 import type { Member, BodyMeasurement, BodyMeasurementUpsert } from '../types'
 import Badge from './Badge'
+import { onlyDigits, isValidEmail } from '../utils/validators'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-const toNum  = (v: string) => { const n = parseFloat(v);  return isNaN(n) ? null : n }
-const toInt  = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n }
-const str    = (v?: number | null) => (v != null ? String(v) : '')
-const isPos  = (v: string) => { const n = parseFloat(v); return !isNaN(n) && n > 0 }
+const toNum    = (v: string) => { const n = parseFloat(v);   return isNaN(n) ? null : n }
+const toInt    = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n }
+const str      = (v?: number | null) => (v != null ? String(v) : '')
+const isPos    = (v: string) => { const n = parseFloat(v); return !isNaN(n) && n > 0 }
 const isNonNeg = (v: string) => { const n = parseFloat(v); return !isNaN(n) && n >= 0 }
-const onlyDigits = (v: string) => /^\d*$/.test(v)
 
 // ── Field ─────────────────────────────────────────────────────────────────────
 function Field({
@@ -67,25 +67,30 @@ const emptyM = (): MFields => ({
 
 export default function MemberInfo({ member, onUpdated }: Props) {
   // personal
-  const [fullName,  setFullName]  = useState(member.full_name)
-  const [phone,     setPhone]     = useState(member.phone)
-  const [document,  setDocument]  = useState(member.document ?? '')
-  const [notes,     setNotes]     = useState(member.notes ?? '')
+  const [fullName, setFullName] = useState(member.full_name)
+  const [phone,    setPhone]    = useState(member.phone)
+  const [document, setDocument] = useState(member.document ?? '')
+  const [email,    setEmail]    = useState(member.email ?? '')
+  const [notes,    setNotes]    = useState(member.notes ?? '')
 
   // measurements (all stored as strings while editing)
-  const [m,         setM]         = useState<MFields>(emptyM())
-  const [loadingM,  setLoadingM]  = useState(true)
+  const [m,        setM]        = useState<MFields>(emptyM())
+  const [loadingM, setLoadingM] = useState(true)
 
   // ui
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  const clearErr = (k: string) =>
+    setErrors(prev => { const next = { ...prev }; delete next[k]; return next })
+
   // reset on member change
   useEffect(() => {
     setFullName(member.full_name)
     setPhone(member.phone)
     setDocument(member.document ?? '')
+    setEmail(member.email ?? '')
     setNotes(member.notes ?? '')
     setErrors({})
   }, [member.id])
@@ -118,8 +123,7 @@ export default function MemberInfo({ member, onUpdated }: Props) {
 
   const setField = (k: string) => (v: string) => {
     setM(prev => ({ ...prev, [k]: v }))
-    // clear field error on change
-    setErrors(prev => { const next = { ...prev }; delete next[k]; return next })
+    clearErr(k)
   }
 
   // ── validation ──────────────────────────────────────────────────────────────
@@ -143,6 +147,9 @@ export default function MemberInfo({ member, onUpdated }: Props) {
     else if (document && parseInt(document) <= 0)
       e.document = 'Debe ser > 0'
 
+    if (email && !isValidEmail(email))
+      e.email = 'Formato inválido'
+
     // measures: if filled, must be > 0
     const measureKeys = ['height','shoulder','chest','waist','hip','bicep','forearm','calf','thigh','body_weight']
     for (const k of measureKeys) {
@@ -165,8 +172,9 @@ export default function MemberInfo({ member, onUpdated }: Props) {
       await updateMember(member.id, {
         full_name: fullName,
         phone,
-        document: document || undefined,
-        notes:    notes    || undefined,
+        document: document?.trim() || undefined,
+        email:    email?.trim()    || undefined,
+        notes:    notes?.trim()    || undefined,
       })
 
       const ageRaw = toInt(m.age)
@@ -209,20 +217,31 @@ export default function MemberInfo({ member, onUpdated }: Props) {
               className={`input ${errors.fullName ? 'ring-2 ring-red-500/50 border-red-500/50' : ''}`}
               type="text"
               value={fullName}
-              onChange={e => { setFullName(e.target.value); setErrors(p => { const n={...p}; delete n.fullName; return n }) }}
+              onChange={e => { setFullName(e.target.value); clearErr('fullName') }}
               placeholder="Nombre completo"
             />
             {errors.fullName && <p className="text-red-400 text-xs">{errors.fullName}</p>}
           </div>
 
           <div className="space-y-1">
-            <Field label="Teléfono" value={phone} onChange={v => { if(onlyDigits(v)) { setPhone(v); setErrors(p => { const n={...p}; delete n.phone; return n }) }}} error={!!errors.phone} />
+            <Field label="Teléfono" value={phone}
+              onChange={v => { if (onlyDigits(v)) { setPhone(v); clearErr('phone') } }}
+              error={!!errors.phone} />
             {errors.phone && <p className="text-red-400 text-xs">{errors.phone}</p>}
           </div>
 
           <div className="space-y-1">
-            <Field label="Documento" value={document} onChange={v => { if(onlyDigits(v)) setDocument(v) }} error={!!errors.document} />
+            <Field label="Documento" value={document}
+              onChange={v => { if (onlyDigits(v)) { setDocument(v); clearErr('document') } }}
+              error={!!errors.document} />
             {errors.document && <p className="text-red-400 text-xs">{errors.document}</p>}
+          </div>
+
+          <div className="col-span-2 space-y-1">
+            <Field label="Correo electrónico" value={email} type="email"
+              onChange={v => { setEmail(v); clearErr('email') }}
+              error={!!errors.email} />
+            {errors.email && <p className="text-red-400 text-xs">{errors.email}</p>}
           </div>
 
           <div className="flex items-center gap-2 pt-4 col-span-2">

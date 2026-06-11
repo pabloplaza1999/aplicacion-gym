@@ -4,6 +4,7 @@ export interface Member {
   full_name: string
   phone: string
   document?: string
+  email?: string
   notes?: string
   registration_date: string
   is_active: boolean
@@ -13,6 +14,7 @@ export interface MemberCreate {
   full_name: string
   phone: string
   document?: string
+  email?: string
   notes?: string
 }
 
@@ -37,9 +39,11 @@ export interface Membership {
   plan_id: number
   start_date: string
   end_date: string
-  status: 'active' | 'expiring' | 'expired' | 'inactive'
+  status: 'active' | 'expiring' | 'expired' | 'inactive' | 'frozen' | 'exhausted'
   freeze_days: number
   is_active: boolean
+  frozen_at: string | null
+  frozen_days_remaining: number | null
 }
 
 export interface MembershipWithPlan extends Membership {
@@ -52,6 +56,15 @@ export interface MembershipWithPlan extends Membership {
 export interface MembershipCreate {
   member_id: number
   plan_id: number
+  force?: boolean
+}
+
+export interface VoucherWarning {
+  has_active_voucher: boolean
+  membership_id: number | null
+  plan_name: string | null
+  entries_remaining: number | null
+  end_date: string | null
 }
 
 // ── Attendance / Valeras ───────────────────────────────────────────────────────
@@ -112,6 +125,8 @@ export interface MembershipStatusSummary {
   active: number
   expiring: number
   expired: number
+  frozen: number
+  exhausted: number
 }
 
 export interface RevenueByPlan {
@@ -130,12 +145,265 @@ export interface RecentRenewal {
   amount_paid?: number
 }
 
+export interface MembershipAlert {
+  membership_id: number
+  member_id: number
+  member_name: string
+  phone?: string
+  document?: string
+  plan_name: string
+  end_date: string
+  days_overdue?: number
+}
+
+export interface MembersByPlan {
+  plan_id: number
+  plan_name: string
+  plan_type: string
+  active_count: number
+  exhausted_count: number
+  expired_count: number
+  frozen_count: number
+  total: number
+}
+
+export interface DebtorAlert {
+  customer_id: number
+  customer_name: string
+  outstanding_balance: number
+  oldest_sale_date?: string | null
+  days_overdue: number
+}
+
+export interface LowStockAlertItem {
+  product_id: number
+  product_name: string
+  stock: number
+  min_stock: number
+}
+
+export interface AlertsSummary {
+  // Membership alerts
+  expired_count: number
+  today_count: number
+  three_days_count: number
+  seven_days_count: number
+  expired_items: MembershipAlert[]
+  today_items: MembershipAlert[]
+  three_days_items: MembershipAlert[]
+  seven_days_items: MembershipAlert[]
+  // Store alerts (optional — default 0/empty for backward compatibility)
+  debtors_count?: number
+  low_stock_count?: number
+  top_debtors?: DebtorAlert[]
+  low_stock_items?: LowStockAlertItem[]
+}
+
 export interface DashboardKPI {
   total_active_members: number
   memberships: MembershipStatusSummary
   monthly_revenue: number
   revenue_by_plan: RevenueByPlan[]
   recent_renewals: RecentRenewal[]
+  alerts?: AlertsSummary
+  // Store KPIs (optional — new in Dashboard Fase B)
+  membership_revenue?: number
+  store_revenue?: number
+  total_revenue?: number
+  store_sales_count?: number
+  cartera_balance?: number
+  // Members by plan distribution
+  members_by_plan?: MembersByPlan[]
+}
+
+// ── Store — Categories & Products ─────────────────────────────────────────────
+export interface ProductCategory {
+  id: number
+  name: string
+  description?: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface ProductCategoryCreate {
+  name: string
+  description?: string
+}
+
+export interface ProductCategoryUpdate {
+  name?: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface Product {
+  id: number
+  category_id: number
+  category_name?: string
+  name: string
+  description?: string
+  price: number
+  cost?: number
+  stock: number
+  min_stock: number
+  is_active: boolean
+  is_low_stock: boolean
+  created_at: string
+}
+
+export interface ProductCreate {
+  category_id: number
+  name: string
+  description?: string
+  price: number
+  cost?: number
+  stock?: number
+  min_stock?: number
+}
+
+export interface ProductUpdate {
+  category_id?: number
+  name?: string
+  description?: string
+  price?: number
+  cost?: number
+  min_stock?: number
+  is_active?: boolean
+}
+
+export interface ProductListResponse {
+  total: number
+  items: Product[]
+}
+
+export interface InventoryMovement {
+  id: number
+  product_id: number
+  product_name?: string
+  type: 'entry' | 'sale' | 'adjustment'
+  quantity: number
+  stock_before: number
+  stock_after: number
+  note?: string
+  sale_id?: number
+  created_at: string
+}
+
+export interface InventoryEntryCreate {
+  quantity: number
+  note?: string
+}
+
+export interface InventoryAdjustmentCreate {
+  quantity: number
+  note: string
+}
+
+// ── Store — Customers ─────────────────────────────────────────────────────────
+export interface Customer {
+  id: number
+  name: string
+  document?: string
+  phone?: string
+  email?: string
+  notes?: string
+  member_id?: number
+  member_name?: string
+  debt_total: number
+  created_at: string
+}
+
+export interface CustomerCreate {
+  name: string
+  document?: string
+  phone?: string
+  email?: string
+  notes?: string
+}
+
+export interface CustomerUpdate {
+  name?: string
+  document?: string
+  phone?: string
+  email?: string
+  notes?: string
+}
+
+// ── Store — Credit Payments ───────────────────────────────────────────────────
+export interface CreditPayment {
+  id: number
+  sale_id: number
+  amount: number
+  method: string
+  notes?: string
+  paid_at: string
+  created_at: string
+}
+
+export interface CreditPaymentCreate {
+  amount: number
+  method: string
+  notes?: string
+}
+
+// ── Store — Sales ─────────────────────────────────────────────────────────────
+export type SaleStatus = 'PAID' | 'PARTIAL' | 'PENDING' | 'CANCELLED'
+export type PaymentType = 'cash' | 'credit'
+
+export interface SaleItem {
+  id: number
+  product_id: number
+  product_name?: string
+  quantity: number
+  unit_price: number
+  subtotal: number
+}
+
+export interface SaleItemCreate {
+  product_id: number
+  quantity: number
+}
+
+export interface Sale {
+  id: number
+  customer_id?: number
+  customer_name?: string
+  sale_date: string
+  subtotal: number
+  discount: number
+  total: number
+  payment_type: PaymentType
+  notes?: string
+  status: SaleStatus
+  amount_paid: number
+  balance: number
+  items: SaleItem[]
+  created_at: string
+}
+
+export interface SaleCreate {
+  customer_id?: number
+  payment_type?: PaymentType
+  discount?: number
+  notes?: string
+  items: SaleItemCreate[]
+}
+
+export interface SaleListResponse {
+  total: number
+  total_amount: number
+  items: Sale[]
+}
+
+export interface CarteraKPI {
+  total_balance: number
+  sale_count: number
+  customer_count: number
+}
+
+export interface CarteraResponse {
+  items: Sale[]
+  kpi: CarteraKPI
 }
 
 // ── Body Measurements ─────────────────────────────────────────────────────────
@@ -157,4 +425,53 @@ export interface BodyMeasurement extends BodyMeasurementUpsert {
   id?: number
   member_id?: number
   updated_at?: string
+}
+
+// ── Store Reports — Fase C ────────────────────────────────────────────────────
+export interface TopProductItem {
+  product_id: number
+  product_name: string
+  units_sold: number
+  revenue: number
+}
+
+export interface LowStockItem {
+  product_id: number
+  product_name: string
+  stock: number
+  min_stock: number
+  category_name?: string
+}
+
+export interface SalesKPI {
+  total_sales: number
+  total_revenue: number
+  cash_sales_count: number
+  cash_sales_amount: number
+  credit_sales_count: number
+  credit_sales_amount: number
+  credit_collections_amount: number
+  average_ticket: number
+}
+
+export interface CarteraReport {
+  outstanding_balance: number
+  customers_with_debt: number
+  pending_sales_count: number
+  partial_sales_count: number
+  oldest_debt_date?: string | null
+}
+
+export interface InventoryReport {
+  low_stock_count: number
+  low_stock_products: LowStockItem[]
+}
+
+export interface StoreReport {
+  date_from: string
+  date_to: string
+  sales: SalesKPI
+  top_products: TopProductItem[]
+  cartera: CarteraReport
+  inventory: InventoryReport
 }

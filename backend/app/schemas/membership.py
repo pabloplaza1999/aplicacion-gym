@@ -17,13 +17,14 @@ class MembershipBase(BaseModel):
 class MembershipCreate(MembershipBase):
     """Schema for creating a new membership."""
 
-    pass
+    force: bool = Field(False, description="Desactivar valera activa si existe (cambio a plan mensual)")
 
 
 class MembershipRenew(BaseModel):
     """Schema for renewing a membership."""
 
     plan_id: int = Field(..., description="ID del plan")
+    force: bool = Field(False, description="Desactivar valera activa si existe (cambio a plan mensual)")
 
 
 class MembershipSetActive(BaseModel):
@@ -40,9 +41,16 @@ class MembershipRead(BaseModel):
     plan_id: int = Field(..., description="ID del plan")
     start_date: datetime = Field(..., description="Fecha de inicio")
     end_date: datetime = Field(..., description="Fecha de vencimiento")
-    status: str = Field(..., description="Estado (active, expiring, expired, inactive)")
-    freeze_days: int = Field(..., description="Días congelados")
+    status: str = Field(..., description="Estado (active, expiring, expired, inactive, frozen)")
+    freeze_days: int = Field(..., description="Días congelados acumulados")
     is_active: bool = Field(..., description="Estado manual (activada/desactivada)")
+    frozen_at: Optional[datetime] = Field(None, description="Fecha en que se congeló (None si no está congelada)")
+    frozen_days_remaining: Optional[int] = Field(None, description="Días pendientes guardados al congelar")
+    last_notified_at: Optional[datetime] = Field(
+        None,
+        description="[INTERNO] Última vez que el job de notificaciones envió aviso de vencimiento. "
+                    "Solo escrito por el notification job (Fase 2). Nunca modificar desde servicios de membresía o frontend.",
+    )
 
     model_config = {"from_attributes": True}
 
@@ -54,6 +62,16 @@ class MembershipWithPlanRead(MembershipRead):
     plan_price: float = Field(..., description="Precio del plan")
     plan_duration_days: int = Field(..., description="Duración en días")
     days_remaining: int = Field(..., description="Días restantes")
+
+
+class VoucherWarning(BaseModel):
+    """Advertencia de valera activa al cambiar a plan mensual."""
+
+    has_active_voucher: bool
+    membership_id: Optional[int] = None
+    plan_name: Optional[str] = None
+    entries_remaining: Optional[int] = None
+    end_date: Optional[str] = None
 
 
 class MembershipHistoryResponse(BaseModel):

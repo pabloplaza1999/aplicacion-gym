@@ -13,7 +13,6 @@ function fmtDateTime(iso: string) {
   }).format(new Date(iso))
 }
 
-// Vista unificada de la valera, derivada de un check-in o de una consulta de estado.
 interface VoucherView {
   member_name: string
   plan_name: string
@@ -24,12 +23,23 @@ interface VoucherView {
   attended_today?: boolean
 }
 
-// Estado derivado en cliente (el backend no devuelve un string de estado para la valera).
 function voucherEstado(v: VoucherView): { label: string; accent: 'green' | 'yellow' | 'red'; cls: string } {
   const expired = new Date(v.end_date).getTime() < Date.now()
-  if (expired)            return { label: 'Vencida', accent: 'red',    cls: 'badge-expired' }
-  if (v.entries_remaining <= 0) return { label: 'Agotada', accent: 'yellow', cls: 'badge-expiring' }
+  if (expired)                   return { label: 'Vencida', accent: 'red',    cls: 'badge-expired' }
+  if (v.entries_remaining <= 0)  return { label: 'Agotada', accent: 'yellow', cls: 'badge-expiring' }
   return { label: 'Vigente', accent: 'green', cls: 'badge-active' }
+}
+
+function toView(s: VoucherStatus): VoucherView {
+  return {
+    member_name: s.member_name,
+    plan_name: s.plan_name,
+    entries_total: s.entries_total,
+    entries_used: s.entries_used,
+    entries_remaining: s.entries_remaining,
+    end_date: s.end_date,
+    attended_today: s.attended_today,
+  }
 }
 
 export default function Attendance() {
@@ -42,6 +52,15 @@ export default function Attendance() {
   function reset() {
     setError(null)
     setSuccess(null)
+  }
+
+  async function loadVoucherStatus(doc: string): Promise<void> {
+    try {
+      const s = await getVoucherStatus(doc)
+      setView(toView(s))
+    } catch {
+      setView(null)
+    }
   }
 
   async function handleCheckIn(e?: React.FormEvent) {
@@ -65,8 +84,8 @@ export default function Attendance() {
         (r.finished ? ' · Valera finalizada' : '')
       )
     } catch (err: any) {
-      setView(null)
       setError(err.message || 'Error al registrar el ingreso')
+      await loadVoucherStatus(document.trim())
     } finally {
       setLoading(false)
     }
@@ -75,23 +94,9 @@ export default function Attendance() {
   async function handleStatus() {
     if (!document.trim()) { setError('Debe ingresar la cédula del cliente'); return }
     reset(); setLoading(true)
-    try {
-      const s: VoucherStatus = await getVoucherStatus(document.trim())
-      setView({
-        member_name: s.member_name,
-        plan_name: s.plan_name,
-        entries_total: s.entries_total,
-        entries_used: s.entries_used,
-        entries_remaining: s.entries_remaining,
-        end_date: s.end_date,
-        attended_today: s.attended_today,
-      })
-    } catch (err: any) {
-      setView(null)
-      setError(err.message || 'No se pudo consultar la valera')
-    } finally {
-      setLoading(false)
-    }
+    await loadVoucherStatus(document.trim())
+    if (!view) setError('No se pudo consultar la valera')
+    setLoading(false)
   }
 
   const estado = view ? voucherEstado(view) : null
@@ -105,7 +110,6 @@ export default function Attendance() {
         </div>
       </div>
 
-      {/* Formulario de check-in por cédula */}
       <form onSubmit={handleCheckIn} className="card space-y-4">
         <label className="block">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Cédula del cliente</span>
@@ -142,7 +146,6 @@ export default function Attendance() {
 
       {loading && <Spinner />}
 
-      {/* Mensaje de error de la API */}
       {error && !loading && (
         <div className="card border-red-500/40 bg-red-500/5 flex items-start gap-3">
           <span className="mt-0.5 w-2 h-2 rounded-full bg-red-500 shrink-0" />
@@ -150,7 +153,6 @@ export default function Attendance() {
         </div>
       )}
 
-      {/* Mensaje de check-in exitoso */}
       {success && !loading && (
         <div className="card border-brand-500/40 bg-brand-500/5 flex items-start gap-3">
           <span className="mt-0.5 w-2 h-2 rounded-full bg-brand-500 shrink-0 animate-pulse" />
@@ -158,7 +160,6 @@ export default function Attendance() {
         </div>
       )}
 
-      {/* Visualización de la valera (solo membresías tipo voucher) */}
       {view && estado && !loading && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">

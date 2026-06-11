@@ -45,8 +45,20 @@ class AttendanceRepository:
             .scalar()
         ) or 0
 
+    def exists_for_membership_on_date(self, membership_id: int, day: date) -> bool:
+        """True if the membership already has an attendance on the given day."""
+        return (
+            self.db.query(Attendance.id)
+            .filter(
+                Attendance.membership_id == membership_id,
+                Attendance.check_in_date == day,
+            )
+            .first()
+            is not None
+        )
+
     def exists_for_member_on_date(self, member_id: int, day: date) -> bool:
-        """True if the member already has an attendance on the given day."""
+        """True if the member has any attendance on the given day (any membership)."""
         return (
             self.db.query(Attendance.id)
             .filter(

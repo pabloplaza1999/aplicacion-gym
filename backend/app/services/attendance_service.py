@@ -72,8 +72,8 @@ class AttendanceService:
         if remaining <= 0:
             raise CheckInError(409, "La valera no tiene ingresos disponibles")
 
-        # 3) Una sola asistencia por cliente por día
-        if self.attendance_repo.exists_for_member_on_date(member.id, today):
+        # 3) Una sola asistencia por valera por día (scoped a membership, no al miembro global)
+        if self.attendance_repo.exists_for_membership_on_date(membership.id, today):
             raise CheckInError(409, "El cliente ya registró asistencia hoy")
 
         # 4) Registrar (consume 1 ingreso)
@@ -119,6 +119,6 @@ class AttendanceService:
             entries_used=used,
             entries_remaining=remaining,
             end_date=membership.end_date,
-            attended_today=self.attendance_repo.exists_for_member_on_date(member.id, now.date()),
+            attended_today=self.attendance_repo.exists_for_membership_on_date(membership.id, now.date()),
             finished=finished,
         )

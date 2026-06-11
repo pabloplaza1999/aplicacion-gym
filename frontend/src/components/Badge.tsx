@@ -1,5 +1,8 @@
-type Status = 'active' | 'expiring' | 'expired' | 'inactive'
-const labels: Record<Status, string> = { active:'Activo', expiring:'Por vencer', expired:'Vencido', inactive:'Inactivo' }
+type Status = 'active' | 'expiring' | 'expired' | 'inactive' | 'frozen' | 'exhausted'
+const labels: Record<Status, string> = {
+  active: 'Activo', expiring: 'Por vencer', expired: 'Vencido',
+  inactive: 'Inactivo', frozen: 'Congelada', exhausted: 'Agotada',
+}
 export default function Badge({ status }: { status: Status }) {
   return (
     <span className={`badge-${status}`}>

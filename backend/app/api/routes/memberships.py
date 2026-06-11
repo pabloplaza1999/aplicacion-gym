@@ -11,13 +11,31 @@ from app.schemas.membership import (
     MembershipSetActive,
     MembershipWithPlanRead,
     MembershipHistoryResponse,
+    VoucherWarning,
 )
 from app.services.membership_service import (
     ActiveVoucherExistsError,
+    FreezeLimitReachedError,  # raised when freeze_count >= MAX_FREEZE_CYCLES
+    MembershipNotFoundError,
     MembershipService,
 )
 
 router = APIRouter(prefix="/members", tags=["memberships"])
+
+
+@router.get("/{member_id}/active-voucher-warning", response_model=VoucherWarning)
+def get_active_voucher_warning(
+    member_id: int,
+    db: Session = Depends(get_db),
+) -> VoucherWarning:
+    """
+    Retorna información de la valera activa vigente del cliente, si existe.
+
+    Usado por el frontend antes de crear/renovar a plan mensual para mostrar
+    advertencia al operador y solicitar confirmación explícita.
+    """
+    service = MembershipService(db)
+    return service.get_active_voucher_warning(member_id)
 
 
 @router.post("/{member_id}/memberships", response_model=MembershipRead, status_code=201)
@@ -123,6 +141,46 @@ def renew_membership(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.post("/memberships/{membership_id}/freeze", response_model=MembershipWithPlanRead)
+def freeze_membership(
+    membership_id: int,
+    db: Session = Depends(get_db),
+) -> MembershipWithPlanRead:
+    """
+    Freeze a membership: preserves remaining days, deactivates.
+
+    On unfreeze, end_date = today + frozen_days_remaining.
+    Blocked if already frozen, inactive, or expired.
+    """
+    service = MembershipService(db)
+    try:
+        return service.freeze_membership(membership_id)
+    except MembershipNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/memberships/{membership_id}/unfreeze", response_model=MembershipWithPlanRead)
+def unfreeze_membership(
+    membership_id: int,
+    db: Session = Depends(get_db),
+) -> MembershipWithPlanRead:
+    """
+    Unfreeze a membership: restores end_date = today + frozen_days_remaining.
+
+    Accumulates freeze_days with elapsed days. Clears freeze fields.
+    Blocked if not currently frozen.
+    """
+    service = MembershipService(db)
+    try:
+        return service.unfreeze_membership(membership_id)
+    except MembershipNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.patch("/memberships/{membership_id}/active", response_model=MembershipWithPlanRead)
 def set_membership_active(
     membership_id: int,
@@ -142,7 +200,10 @@ def set_membership_active(
     - **is_active**: Desired manual state (true = activa, false = desactivada)
     """
     service = MembershipService(db)
-    membership = service.set_membership_active(membership_id, data.is_active)
+    try:
+        membership = service.set_membership_active(membership_id, data.is_active)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not membership:
         raise HTTPException(status_code=404, detail="Membresía no encontrada")
     return membership

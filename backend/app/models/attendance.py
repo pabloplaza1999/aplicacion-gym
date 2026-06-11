@@ -1,4 +1,4 @@
-"""Attendance model — one check-in per member per day for voucher memberships."""
+"""Attendance model — one check-in per membership per day for voucher memberships."""
 
 from datetime import datetime
 from sqlalchemy import Column, Integer, DateTime, Date, ForeignKey, UniqueConstraint
@@ -21,9 +21,9 @@ class Attendance(Base):
     check_in_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     check_in_date = Column(Date, nullable=False, index=True)
 
-    # Max one attendance per member per calendar day.
+    # Max one attendance per membership per calendar day (scoped to membership, not member globally).
     __table_args__ = (
-        UniqueConstraint("member_id", "check_in_date", name="uq_attendance_member_day"),
+        UniqueConstraint("membership_id", "check_in_date", name="uq_attendance_membership_day"),
     )
 
     def __repr__(self) -> str:

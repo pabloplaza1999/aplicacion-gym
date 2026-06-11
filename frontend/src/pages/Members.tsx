@@ -3,19 +3,19 @@ import {
   getMembers, createMember, updateMember, deleteMember,
   getCurrentMembership, getMemberPayments, createMembership,
   renewMembership, setMembershipActive, getPlans, createPayment, deletePayment,
+  getActiveVoucherWarning, freezeMembership, unfreezeMembership,
 } from '../services/api'
-import type { Member, MemberCreate, MembershipWithPlan, Plan, Payment, PaymentMethod } from '../types'
+import type { Member, MemberCreate, MembershipWithPlan, Plan, Payment, PaymentMethod, VoucherWarning } from '../types'
 import Modal from '../components/Modal'
 import Badge from '../components/Badge'
 import Spinner from '../components/Spinner'
 import Empty from '../components/Empty'
 import MemberInfo from '../components/MemberInfo'
+import { onlyLetters, onlyDigits, isValidEmail } from '../utils/validators'
 
 function fmt(n: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
 }
-const onlyLetters = (v: string) => /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]*$/.test(v)
-const onlyDigits  = (v: string) => /^\d*$/.test(v)
 
 // ── MemberForm ────────────────────────────────────────────────────────────────
 function MemberForm({ initial, onSave, onCancel }: {
@@ -23,7 +23,7 @@ function MemberForm({ initial, onSave, onCancel }: {
 }) {
   const [form, setForm] = useState<MemberCreate>({
     full_name: initial?.full_name ?? '', phone: initial?.phone ?? '',
-    document: initial?.document ?? '', notes: initial?.notes ?? '',
+    document: initial?.document ?? '', email: initial?.email ?? '', notes: initial?.notes ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -35,8 +35,9 @@ function MemberForm({ initial, onSave, onCancel }: {
     if (/\d/.test(form.full_name)) { setErr('El nombre no debe contener números'); return }
     if (!/^\d+$/.test(form.phone)) { setErr('El teléfono debe contener solo números'); return }
     if (form.document && !/^\d+$/.test(form.document)) { setErr('El documento debe contener solo números'); return }
+    if (form.email && !isValidEmail(form.email)) { setErr('El correo electrónico no tiene un formato válido'); return }
     setSaving(true); setErr('')
-    try { await onSave(form) } catch (e: any) { setErr(e.message) } finally { setSaving(false) }
+    try { await onSave({ ...form, email: form.email?.trim() || undefined }) } catch (e: any) { setErr(e.message) } finally { setSaving(false) }
   }
 
   return (
@@ -61,6 +62,11 @@ function MemberForm({ initial, onSave, onCancel }: {
         <label className="label">Documento</label>
         <input className="input" value={form.document} placeholder="CC / TI"
           onChange={e => onlyDigits(e.target.value) && setForm(f => ({ ...f, document: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label">Correo electrónico</label>
+        <input className="input" type="email" value={form.email} placeholder="correo@ejemplo.com"
+          onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
       </div>
       <div>
         <label className="label">Notas</label>
@@ -91,6 +97,8 @@ function MemberDetail({ member, plans, onClose, onUpdated }: {
   const [payMethod, setPayMethod]         = useState<PaymentMethod>('cash')
   const [saving, setSaving]               = useState(false)
   const [err, setErr]                     = useState('')
+  const [voucherWarning, setVoucherWarning] = useState<VoucherWarning | null>(null)
+  const [pendingAction, setPendingAction]   = useState<'create' | 'renew' | null>(null)
 
   const load = useCallback(async () => {
     setLoadingDetail(true)
@@ -101,23 +109,43 @@ function MemberDetail({ member, plans, onClose, onUpdated }: {
   useEffect(() => { load() }, [load])
   useEffect(() => { if (plans.length > 0 && selectedPlan === 0) setSelectedPlan(plans[0].id) }, [plans, selectedPlan])
 
-  async function handleNewMembership() {
+  async function handleNewMembership(force = false) {
+    const planIsVoucher = plans.find(p => p.id === selectedPlan)?.plan_type === 'voucher'
+    if (!force && !planIsVoucher) {
+      const w = await getActiveVoucherWarning(member.id).catch(() => null)
+      if (w?.has_active_voucher) { setVoucherWarning(w); setPendingAction('create'); return }
+    }
     setSaving(true); setErr('')
-    try { await createMembership(member.id, { member_id: member.id, plan_id: selectedPlan }); await load(); onUpdated() }
+    try {
+      await createMembership(member.id, { member_id: member.id, plan_id: selectedPlan, force })
+      setVoucherWarning(null); setPendingAction(null); await load(); onUpdated()
+    }
     catch (e: any) { setErr(e.message) } finally { setSaving(false) }
   }
-  async function handleRenew() {
+  async function handleRenew(force = false) {
     if (!membership) return
+    const planIsVoucher = plans.find(p => p.id === selectedPlan)?.plan_type === 'voucher'
+    if (!force && !planIsVoucher) {
+      const w = await getActiveVoucherWarning(member.id).catch(() => null)
+      if (w?.has_active_voucher) { setVoucherWarning(w); setPendingAction('renew'); return }
+    }
     setSaving(true); setErr('')
-    try { await renewMembership(membership.id, selectedPlan); await load(); onUpdated() }
+    try {
+      await renewMembership(membership.id, selectedPlan, force)
+      setVoucherWarning(null); setPendingAction(null); await load(); onUpdated()
+    }
     catch (e: any) { setErr(e.message) } finally { setSaving(false) }
   }
-  async function handleToggleMembership() {
-    if (!membership) return
+  async function runMembershipAction(action: () => Promise<unknown>) {
     setSaving(true); setErr('')
-    try { await setMembershipActive(membership.id, !membership.is_active); await load(); onUpdated() }
+    try { await action(); await load(); onUpdated() }
     catch (e: any) { setErr(e.message) } finally { setSaving(false) }
   }
+  const handleToggleMembership = () => membership
+    ? runMembershipAction(() => setMembershipActive(membership.id, !membership.is_active))
+    : Promise.resolve()
+  const handleFreeze   = () => membership ? runMembershipAction(() => freezeMembership(membership.id))   : Promise.resolve()
+  const handleUnfreeze = () => membership ? runMembershipAction(() => unfreezeMembership(membership.id)) : Promise.resolve()
   async function handlePayment() {
     const amount = parseFloat(payAmount)
     if (!amount || amount <= 0) { setErr('Monto inválido'); return }
@@ -176,29 +204,83 @@ function MemberDetail({ member, plans, onClose, onUpdated }: {
                       </div>
                     ))}
                   </div>
-                  <button onClick={handleToggleMembership} disabled={saving}
-                    className={`btn-ghost w-full text-xs uppercase tracking-widest ${
-                      membership.is_active ? 'text-yellow-500 hover:text-yellow-400' : 'text-brand-400 hover:text-brand-300'}`}>
-                    {saving ? 'Procesando...' : membership.is_active ? 'Desactivar membresía' : 'Activar membresía'}
-                  </button>
+                  {membership.status === 'frozen' && membership.frozen_at && (
+                    <div className="bg-sky-500/10 border border-sky-500/20 rounded p-3 space-y-1">
+                      <p className="text-xs font-semibold text-sky-400 uppercase tracking-widest">Membresía congelada</p>
+                      <p className="text-xs text-gray-400 font-mono">
+                        Desde: {membership.frozen_at.slice(0, 10)}
+                        {' · '}{membership.frozen_days_remaining} días pendientes
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    {membership.status === 'frozen' ? (
+                      <button onClick={handleUnfreeze} disabled={saving}
+                        className="btn-ghost flex-1 text-xs uppercase tracking-widest text-sky-400 hover:text-sky-300">
+                        {saving ? 'Procesando...' : 'Reactivar membresía'}
+                      </button>
+                    ) : membership.is_active ? (
+                      <>
+                        <button onClick={handleFreeze} disabled={saving}
+                          className="btn-ghost flex-1 text-xs uppercase tracking-widest text-sky-500 hover:text-sky-400">
+                          {saving ? 'Procesando...' : 'Congelar'}
+                        </button>
+                        <button onClick={handleToggleMembership} disabled={saving}
+                          className="btn-ghost flex-1 text-xs uppercase tracking-widest text-yellow-500 hover:text-yellow-400">
+                          {saving ? 'Procesando...' : 'Desactivar'}
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={handleToggleMembership} disabled={saving}
+                        className="btn-ghost w-full text-xs uppercase tracking-widest text-brand-400 hover:text-brand-300">
+                        {saving ? 'Procesando...' : 'Activar membresía'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="bg-surface-raised border border-surface-border rounded p-4">
                   <p className="text-gray-600 text-sm font-mono">Sin membresía activa</p>
                 </div>
               )}
+              {voucherWarning?.has_active_voucher && (
+                <div className="bg-energy-500/10 border border-energy-500/30 rounded-lg p-4 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <span className="w-1 h-4 mt-0.5 bg-energy-500 rounded-full shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-energy-400 text-xs font-semibold uppercase tracking-widest">Valera activa</p>
+                      <p className="text-gray-300 text-sm">
+                        <span className="font-semibold">{voucherWarning.plan_name}</span>
+                        {' — '}{voucherWarning.entries_remaining} ingresos restantes
+                        {voucherWarning.end_date && ` · vence ${voucherWarning.end_date}`}
+                      </p>
+                      <p className="text-gray-500 text-xs">Al confirmar, la valera quedará desactivada.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => pendingAction === 'create' ? handleNewMembership(true) : handleRenew(true)}
+                      disabled={saving} className="btn-primary flex-1 text-xs">
+                      {saving ? 'Procesando...' : 'Confirmar cambio'}
+                    </button>
+                    <button onClick={() => { setVoucherWarning(null); setPendingAction(null) }}
+                      className="btn-ghost text-xs">Cancelar</button>
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="label">Seleccionar plan</label>
-                <select className="input" value={selectedPlan} onChange={e => setSelectedPlan(Number(e.target.value))}>
+                <select className="input" value={selectedPlan}
+                  onChange={e => { setSelectedPlan(Number(e.target.value)); setVoucherWarning(null); setPendingAction(null) }}>
                   {plans.map(p => <option key={p.id} value={p.id}>{p.name} — {fmt(p.price)}</option>)}
                 </select>
               </div>
               {membership ? (
-                <button onClick={handleRenew} disabled={saving} className="btn-primary w-full">
+                <button onClick={() => handleRenew()} disabled={saving} className="btn-primary w-full">
                   {saving ? 'Procesando...' : 'Renovar membresía'}
                 </button>
               ) : (
-                <button onClick={handleNewMembership} disabled={saving} className="btn-primary w-full">
+                <button onClick={() => handleNewMembership()} disabled={saving} className="btn-primary w-full">
                   {saving ? 'Procesando...' : 'Crear membresía'}
                 </button>
               )}
