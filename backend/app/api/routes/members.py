@@ -24,6 +24,7 @@ def create_member(
     - **full_name**: Full name (required)
     - **phone**: Phone number (required)
     - **document**: Document/ID (optional)
+    - **email**: Email address (optional). Validated via EmailStr; "" and " " stored as null.
     - **notes**: Notes (optional)
     """
     service = MemberService(db)
@@ -77,6 +78,7 @@ def update_member(
     - **full_name**: Full name
     - **phone**: Phone number
     - **document**: Document/ID
+    - **email**: Email address. Contract: valid string → update; null or "" → sets NULL (delete); omitted → no change.
     - **notes**: Notes
     - **is_active**: Active status
     """

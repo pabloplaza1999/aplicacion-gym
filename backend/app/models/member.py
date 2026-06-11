@@ -18,6 +18,7 @@ class Member(Base):
     phone = Column(String(20), nullable=False)
     document = Column(String(20), nullable=True, unique=True)
     registration_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    email = Column(String(255), nullable=True)
     notes = Column(String(1000), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
 

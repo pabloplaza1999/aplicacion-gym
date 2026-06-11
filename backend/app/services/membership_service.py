@@ -12,7 +12,19 @@ from app.schemas.membership import (
     MembershipRead,
     MembershipRenew,
     MembershipWithPlanRead,
+    VoucherWarning,
 )
+
+# Maximum freeze/unfreeze cycles allowed per membership (TD-13).
+MAX_FREEZE_CYCLES = 3
+
+
+class MembershipNotFoundError(Exception):
+    """Raised when a membership_id does not exist."""
+
+
+class FreezeLimitReachedError(ValueError):
+    """Raised when a membership has reached MAX_FREEZE_CYCLES."""
 
 
 class ActiveVoucherExistsError(Exception):
@@ -33,25 +45,21 @@ class MembershipService:
         self.attendance_repo = AttendanceRepository(db)
         self.db = db
 
-    def _calculate_status(self, end_date: datetime, is_active: bool = True) -> str:
+    def _calculate_status(
+        self, end_date: datetime, is_active: bool = True, frozen_at: Optional[datetime] = None
+    ) -> str:
         """
         Calculate membership status.
 
         Rules:
-        - inactive: manually deactivated (is_active=False), overrides dates
-        - expired: end_date < today
+        - frozen:   is_active=False AND frozen_at is set (paused, days preserved)
+        - inactive: is_active=False AND frozen_at is None (manually deactivated)
+        - expired:  end_date < today
         - expiring: today <= end_date <= today + 5 days
-        - active: end_date > today + 5 days
-
-        Args:
-            end_date: Membership end date
-            is_active: Manual on/off switch
-
-        Returns:
-            Status string: 'inactive', 'expired', 'expiring', or 'active'
+        - active:   end_date > today + 5 days
         """
         if not is_active:
-            return "inactive"
+            return "frozen" if frozen_at is not None else "inactive"
 
         today = datetime.utcnow()
         days_remaining = (end_date - today).days
@@ -70,43 +78,44 @@ class MembershipService:
         Rules:
         - Plan Día (plan_type='daily'): vence el mismo día
         - Plans mensuales: 30 días desde start_date
-
-        Args:
-            start_date: Membership start date
-            plan_id: Plan ID
-
-        Returns:
-            Calculated end date
         """
         plan = self.repository.get_plan_by_id(plan_id)
         if not plan:
             raise ValueError(f"Plan {plan_id} not found")
 
         if plan.plan_type == "daily":
-            # Plan Día: vence el mismo día
             return start_date.replace(hour=23, minute=59, second=59)
         else:
-            # Plans mensuales: duration_days (30)
             return start_date + timedelta(days=plan.duration_days)
 
     def _enrich_membership(self, membership, plan=None):
         """
         Enrich membership with calculated status and plan details.
 
-        Args:
-            membership: Membership model instance
-            plan: Plan model instance (optional, fetched if not provided)
-
-        Returns:
-            Dictionary with membership data and calculated fields
+        Passes frozen_at to _calculate_status so frozen state is reflected.
+        For voucher memberships, overrides status to 'exhausted' when all
+        entries have been consumed but the membership is still within date (TD-01).
         """
         if plan is None:
             plan = self.repository.get_plan_by_id(membership.plan_id)
 
         data = MembershipRead.from_orm(membership)
-        data.status = self._calculate_status(membership.end_date, membership.is_active)
+        data.status = self._calculate_status(
+            membership.end_date, membership.is_active, membership.frozen_at
+        )
 
-        # Calculate days remaining
+        # TD-01: voucher agotada — status override using the same attendance source
+        # of truth as _has_active_valid_voucher and get_active_voucher_warning.
+        if (
+            plan
+            and plan.plan_type == "voucher"
+            and membership.entries_total is not None
+            and data.status not in ("expired", "inactive", "frozen")
+        ):
+            used = self.attendance_repo.count_by_membership(membership.id)
+            if used >= membership.entries_total:
+                data.status = "exhausted"
+
         today = datetime.utcnow()
         days_remaining = max(0, (membership.end_date - today).days)
 
@@ -129,12 +138,6 @@ class MembershipService:
 
         An exhausted or expired voucher does NOT block. Date-based (monthly)
         memberships are never considered here.
-
-        Args:
-            member_id: Member ID
-
-        Returns:
-            True if an active, valid voucher exists for the member
         """
         membership = self.repository.get_active_voucher_membership(member_id)
         if not membership or membership.entries_total is None:
@@ -142,11 +145,40 @@ class MembershipService:
 
         now = datetime.utcnow()
         if membership.end_date < now:
-            return False  # vencida → no bloquea
+            return False
 
         used = self.attendance_repo.count_by_membership(membership.id)
         remaining = membership.entries_total - used
-        return remaining > 0  # con saldo → bloquea
+        return remaining > 0
+
+    def get_active_voucher_warning(self, member_id: int) -> VoucherWarning:
+        """
+        Retorna info de la valera activa vigente del cliente, si existe.
+
+        Usado antes de crear/renovar a plan mensual para mostrar advertencia
+        y pedir confirmación al operador.
+        """
+        membership = self.repository.get_active_voucher_membership(member_id)
+        if not membership or membership.entries_total is None:
+            return VoucherWarning(has_active_voucher=False)
+
+        now = datetime.utcnow()
+        if membership.end_date < now:
+            return VoucherWarning(has_active_voucher=False)
+
+        used = self.attendance_repo.count_by_membership(membership.id)
+        remaining = membership.entries_total - used
+        if remaining <= 0:
+            return VoucherWarning(has_active_voucher=False)
+
+        plan = self.repository.get_plan_by_id(membership.plan_id)
+        return VoucherWarning(
+            has_active_voucher=True,
+            membership_id=membership.id,
+            plan_name=plan.name if plan else None,
+            entries_remaining=remaining,
+            end_date=membership.end_date.date().isoformat(),
+        )
 
     def create_membership(self, data: MembershipCreate) -> MembershipRead:
         """
@@ -154,11 +186,9 @@ class MembershipService:
 
         Automatically calculates end_date based on plan duration.
 
-        Args:
-            data: Membership creation data
-
-        Returns:
-            Created membership with calculated status
+        Business rule: a member can hold at most one active non-voucher membership
+        at a time. If one exists when creating a new non-voucher, it is deactivated
+        atomically (same pattern as renew_membership).
 
         Raises:
             ActiveVoucherExistsError: when creating a voucher membership while
@@ -167,18 +197,25 @@ class MembershipService:
         start_date = data.start_date or datetime.utcnow()
         end_date = self._calculate_end_date(start_date, data.plan_id)
 
-        # Voucher memberships snapshot their entry cap from the plan; date-based
-        # memberships keep entries_total = None (unchanged behavior).
         plan = self.repository.get_plan_by_id(data.plan_id)
         entries_total = plan.entry_count if plan and plan.plan_type == "voucher" else None
 
-        # Business rule: only one active valid voucher per member. Applies ONLY
-        # when the NEW plan is a voucher; monthly memberships are unaffected.
         if plan and plan.plan_type == "voucher" and self._has_active_valid_voucher(data.member_id):
             raise ActiveVoucherExistsError(
                 "El cliente ya tiene una valera activa vigente. "
                 "No se puede vender otra hasta que se agote o venza."
             )
+
+        if plan and plan.plan_type != "voucher" and data.force:
+            active_voucher = self.repository.get_active_voucher_membership(data.member_id)
+            if active_voucher:
+                self.repository.set_active(active_voucher.id, False)
+
+        # Enforce one-active-non-voucher rule: deactivate previous non-voucher if present.
+        if plan and plan.plan_type != "voucher":
+            existing = self.repository.get_active_non_voucher_membership(data.member_id)
+            if existing:
+                self.repository.deactivate_no_commit(existing.id)
 
         membership = self.repository.create(
             member_id=data.member_id,
@@ -200,23 +237,12 @@ class MembershipService:
 
         plan = self.repository.get_plan_by_id(membership.plan_id)
         enriched = self._enrich_membership(membership, plan)
-
         return MembershipWithPlanRead(**enriched)
 
     def get_member_memberships(
         self, member_id: int, skip: int = 0, limit: int = 100
     ) -> dict:
-        """
-        Get all memberships for a member.
-
-        Args:
-            member_id: Member ID
-            skip: Number of records to skip
-            limit: Maximum number of records to return
-
-        Returns:
-            Dictionary with total count and list of memberships
-        """
+        """Get all memberships for a member."""
         memberships = self.repository.get_by_member_id(member_id, skip=skip, limit=limit)
         total = self.repository.get_by_member_id_count(member_id)
 
@@ -226,28 +252,16 @@ class MembershipService:
             result.status = self._calculate_status(m.end_date, m.is_active)
             items.append(result)
 
-        return {
-            "total": total,
-            "items": items,
-        }
+        return {"total": total, "items": items}
 
     def get_current_membership(self, member_id: int) -> Optional[MembershipWithPlanRead]:
-        """
-        Get the current (most recent) membership for a member.
-
-        Args:
-            member_id: Member ID
-
-        Returns:
-            Current membership with plan details or None
-        """
+        """Get the current (most recent) membership for a member."""
         membership = self.repository.get_active_membership(member_id)
         if not membership:
             return None
 
         plan = self.repository.get_plan_by_id(membership.plan_id)
         enriched = self._enrich_membership(membership, plan)
-
         return MembershipWithPlanRead(**enriched)
 
     def renew_membership(self, membership_id: int, data: MembershipRenew) -> MembershipRead:
@@ -255,21 +269,13 @@ class MembershipService:
         Renew a membership with a new plan.
 
         Creates a new membership starting from today.
-
-        Args:
-            membership_id: Current membership ID (for reference)
-            data: Renewal data with new plan_id
-
-        Returns:
-            New membership
         """
         old_membership = self.repository.get_by_id(membership_id)
         if not old_membership:
             raise ValueError(f"Membership {membership_id} not found")
 
-        # Business rule: renewing into a voucher plan is blocked while the
-        # member already holds an active valid voucher (same as create).
         new_plan = self.repository.get_plan_by_id(data.plan_id)
+
         if (
             new_plan
             and new_plan.plan_type == "voucher"
@@ -280,15 +286,19 @@ class MembershipService:
                 "No se puede vender otra hasta que se agote o venza."
             )
 
-        # Create new membership starting today
+        if new_plan and new_plan.plan_type != "voucher" and data.force:
+            active_voucher = self.repository.get_active_voucher_membership(old_membership.member_id)
+            if active_voucher:
+                self.repository.set_active(active_voucher.id, False)
+
         start_date = datetime.utcnow()
         end_date = self._calculate_end_date(start_date, data.plan_id)
 
-        # Voucher renewals snapshot their entry cap from the new plan (same rule
-        # as create_membership); date-based renewals keep entries_total = None.
         entries_total = (
             new_plan.entry_count if new_plan and new_plan.plan_type == "voucher" else None
         )
+
+        self.repository.deactivate_no_commit(old_membership.id)
 
         new_membership = self.repository.create(
             member_id=old_membership.member_id,
@@ -308,33 +318,94 @@ class MembershipService:
         """
         Manually activate or deactivate a membership.
 
-        Independent of the member's state and of the dates.
-
-        Args:
-            membership_id: Membership ID
-            is_active: Desired manual state
-
-        Returns:
-            Updated membership with plan details or None if not found
+        Blocked while the membership is frozen; use unfreeze_membership instead.
+        Blocked when activating a non-voucher membership while another non-voucher
+        is already active for the same member (one-active-non-voucher rule).
         """
-        membership = self.repository.set_active(membership_id, is_active)
+        membership = self.repository.get_by_id(membership_id)
         if not membership:
             return None
+        if membership.frozen_at is not None:
+            raise ValueError(
+                "La membresía está congelada. Usa 'Reactivar' para restaurarla con los días pendientes."
+            )
 
-        plan = self.repository.get_plan_by_id(membership.plan_id)
-        enriched = self._enrich_membership(membership, plan)
+        if is_active:
+            plan = self.repository.get_plan_by_id(membership.plan_id)
+            if plan and plan.plan_type != "voucher":
+                conflict = self.repository.get_active_non_voucher_membership(
+                    membership.member_id, exclude_id=membership_id
+                )
+                if conflict:
+                    raise ValueError(
+                        "El cliente ya tiene una membresía activa. "
+                        "Desactívala primero antes de reactivar esta."
+                    )
+
+        updated = self.repository.set_active(membership_id, is_active)
+        plan = self.repository.get_plan_by_id(updated.plan_id)
+        enriched = self._enrich_membership(updated, plan)
+        return MembershipWithPlanRead(**enriched)
+
+    def freeze_membership(self, membership_id: int) -> MembershipWithPlanRead:
+        """
+        Freeze a membership: save days_remaining and set is_active=False.
+
+        Preconditions: is_active=True, not already frozen, end_date > now,
+        freeze_count < MAX_FREEZE_CYCLES.
+        Persistence delegated to repository.freeze() which commits in one transaction.
+        """
+        membership = self.repository.get_by_id(membership_id)
+        if not membership:
+            raise MembershipNotFoundError(f"Membresía {membership_id} no encontrada.")
+        if not membership.is_active:
+            raise ValueError("La membresía ya está inactiva o congelada.")
+        if membership.frozen_at is not None:
+            raise ValueError("La membresía ya está congelada.")
+        if (membership.freeze_count or 0) >= MAX_FREEZE_CYCLES:
+            raise FreezeLimitReachedError(
+                f"Esta membresía ya alcanzó el límite de {MAX_FREEZE_CYCLES} congelaciones."
+            )
+        now = datetime.utcnow()
+        if membership.end_date <= now:
+            raise ValueError("No se puede congelar una membresía vencida.")
+
+        days_remaining = (membership.end_date - now).days
+        updated = self.repository.freeze(
+            membership_id, frozen_at=now, frozen_days_remaining=days_remaining
+        )
+        plan = self.repository.get_plan_by_id(updated.plan_id)
+        enriched = self._enrich_membership(updated, plan)
+        return MembershipWithPlanRead(**enriched)
+
+    def unfreeze_membership(self, membership_id: int) -> MembershipWithPlanRead:
+        """
+        Unfreeze a membership: new end_date = now + frozen_days_remaining.
+
+        Accumulates freeze_days with elapsed days. Clears freeze fields.
+        Persistence delegated to repository.unfreeze() which commits in one transaction.
+        """
+        membership = self.repository.get_by_id(membership_id)
+        if not membership:
+            raise MembershipNotFoundError(f"Membresía {membership_id} no encontrada.")
+        if membership.frozen_at is None:
+            raise ValueError("La membresía no está congelada.")
+
+        now = datetime.utcnow()
+        elapsed = now - membership.frozen_at
+        # Extend the original end_date by exact elapsed time — avoids floor-division day loss.
+        new_end_date = membership.end_date + elapsed
+        freeze_days_delta = elapsed.days
+
+        updated = self.repository.unfreeze(
+            membership_id, new_end_date=new_end_date, freeze_days_delta=freeze_days_delta
+        )
+        plan = self.repository.get_plan_by_id(updated.plan_id)
+        enriched = self._enrich_membership(updated, plan)
         return MembershipWithPlanRead(**enriched)
 
     def get_expiring_memberships(self, days: int = 5) -> list[MembershipWithPlanRead]:
-        """
-        Get memberships expiring within the specified number of days.
-
-        Args:
-            days: Number of days to check
-
-        Returns:
-            List of expiring memberships with plan details
-        """
+        """Get memberships expiring within the specified number of days."""
         memberships = self.repository.get_expiring_soon(days=days)
 
         results = []

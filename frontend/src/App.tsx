@@ -3,6 +3,7 @@ import Dashboard from './pages/Dashboard'
 import Members from './pages/Members'
 import Payments from './pages/Payments'
 import Attendance from './pages/Attendance'
+import Store from './pages/Store'
 
 const NAV = [
   { to: '/',         label: 'Dashboard', icon: (
@@ -28,6 +29,13 @@ const NAV = [
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
       <path d="M9 11l3 3L22 4"/>
       <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+    </svg>
+  )},
+  { to: '/tienda', label: 'Tienda', icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+      <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <path d="M16 10a4 4 0 0 1-8 0"/>
     </svg>
   )},
 ]
@@ -60,9 +68,9 @@ export default function App() {
                 className={`group flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium
                   transition-all duration-200 relative overflow-hidden border
                   ${active
-                    ? 'bg-brand-500/15 text-white border-brand-500/25'
-                    : 'text-gray-500 hover:text-gray-200 hover:bg-surface-raised border-transparent'}`}>
-                {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-brand-500 rounded-r shadow-brand-sm" />}
+                    ? 'bg-gradient-to-r from-brand-500/20 to-transparent text-white border-brand-500/25'
+                    : 'text-gray-500 hover:text-gray-200 hover:bg-surface-raised/80 border-transparent'}`}>
+                {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-brand-500 rounded-r shadow-brand-sm transition-all duration-200" />}
                 <span className={active ? 'text-brand-400' : 'text-gray-600 group-hover:text-gray-400 transition-colors'}>{icon}</span>
                 <span className="tracking-wide">{label}</span>
               </NavLink>
@@ -82,6 +90,7 @@ export default function App() {
           <Route path="/members"  element={<Members />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/attendance" element={<Attendance />} />
+          <Route path="/tienda"     element={<Store />} />
         </Routes>
       </main>
     </div>

@@ -89,7 +89,7 @@ class MembershipRepository:
         return (
             self.db.query(Membership)
             .filter(Membership.member_id == member_id)
-            .order_by(Membership.start_date.desc())
+            .order_by(Membership.start_date.desc(), Membership.id.desc())
             .first()
         )
 
@@ -151,6 +151,40 @@ class MembershipRepository:
         self.db.refresh(membership)
         return membership
 
+    def freeze(self, membership_id: int, frozen_at: datetime, frozen_days_remaining: int) -> Optional[Membership]:
+        """Freeze a membership: store freeze timestamp, days remaining, and deactivate."""
+        membership = self.get_by_id(membership_id)
+        if not membership:
+            return None
+        membership.frozen_at = frozen_at
+        membership.frozen_days_remaining = frozen_days_remaining
+        membership.is_active = False
+        self.db.commit()
+        self.db.refresh(membership)
+        return membership
+
+    def unfreeze(self, membership_id: int, new_end_date: datetime, freeze_days_delta: int) -> Optional[Membership]:
+        """Unfreeze a membership: restore end_date, accumulate freeze_days, clear freeze fields."""
+        membership = self.get_by_id(membership_id)
+        if not membership:
+            return None
+        membership.end_date = new_end_date
+        membership.freeze_days = (membership.freeze_days or 0) + freeze_days_delta
+        membership.freeze_count = (membership.freeze_count or 0) + 1
+        membership.frozen_at = None
+        membership.frozen_days_remaining = None
+        membership.is_active = True
+        self.db.commit()
+        self.db.refresh(membership)
+        return membership
+
+    def deactivate_no_commit(self, membership_id: int) -> None:
+        """Set is_active=False without committing — caller owns the transaction."""
+        membership = self.get_by_id(membership_id)
+        if membership:
+            membership.is_active = False
+            self.db.flush()
+
     def get_active_voucher_membership(self, member_id: int) -> Optional[Membership]:
         """
         Get the member's most recent ACTIVE voucher membership.
@@ -169,6 +203,27 @@ class MembershipRepository:
             .order_by(Membership.start_date.desc())
             .first()
         )
+
+    def get_active_non_voucher_membership(
+        self, member_id: int, exclude_id: Optional[int] = None
+    ) -> Optional[Membership]:
+        """Get the member's most recent active non-voucher (monthly/daily/premium) membership.
+
+        Used to enforce the one-active-non-voucher rule in create_membership and
+        set_membership_active. Pass exclude_id to skip the membership being evaluated.
+        """
+        q = (
+            self.db.query(Membership)
+            .join(Plan, Membership.plan_id == Plan.id)
+            .filter(
+                Membership.member_id == member_id,
+                Membership.is_active == True,  # noqa: E712
+                Plan.plan_type != "voucher",
+            )
+        )
+        if exclude_id is not None:
+            q = q.filter(Membership.id != exclude_id)
+        return q.order_by(Membership.start_date.desc(), Membership.id.desc()).first()
 
     def get_plan_by_id(self, plan_id: int) -> Optional[Plan]:
         """Get plan details by ID."""

@@ -1,13 +1,21 @@
 import type {
   Member, MemberCreate, MemberListResponse,
   Plan,
-  Membership, MembershipWithPlan, MembershipCreate,
+  Membership, MembershipWithPlan, MembershipCreate, VoucherWarning,
   Payment, PaymentCreate, PaymentListResponse,
   DashboardKPI,
   CheckInResult, VoucherStatus,
+  ProductCategory, ProductCategoryCreate, ProductCategoryUpdate,
+  Product, ProductCreate, ProductUpdate, ProductListResponse,
+  InventoryMovement, InventoryEntryCreate, InventoryAdjustmentCreate,
+  Sale, SaleCreate, SaleListResponse,
+  Customer, CustomerCreate, CustomerUpdate,
+  CreditPayment, CreditPaymentCreate,
+  CarteraResponse,
+  StoreReport,
 } from '../types'
 
-const BASE = '/api'
+const BASE = import.meta.env.VITE_API_URL || '/api'
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -37,7 +45,7 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
           shoulder: 'Hombro',
           chest: 'Pecho',
           waist: 'Cintura',
-          hip: 'Cola'
+          hip: 'Cola',
         }
         const field = fieldLabels[rawField] || rawField
         const msg = e.msg.replace(/^Value error,\s*/i, '')
@@ -48,6 +56,7 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     }
     throw new Error(message)
   }
+  if (res.status === 204) return undefined as T
   return res.json()
 }
 
@@ -85,11 +94,20 @@ export const getCurrentMembership = (memberId: number): Promise<MembershipWithPl
 export const createMembership = (memberId: number, data: MembershipCreate): Promise<Membership> =>
   req(`/members/${memberId}/memberships`, { method: 'POST', body: JSON.stringify(data) })
 
-export const renewMembership = (membershipId: number, planId: number): Promise<Membership> =>
+export const renewMembership = (membershipId: number, planId: number, force = false): Promise<Membership> =>
   req(`/members/memberships/${membershipId}/renew`, {
     method: 'POST',
-    body: JSON.stringify({ plan_id: planId }),
+    body: JSON.stringify({ plan_id: planId, force }),
   })
+
+export const getActiveVoucherWarning = (memberId: number): Promise<VoucherWarning> =>
+  req(`/members/${memberId}/active-voucher-warning`)
+
+export const freezeMembership = (membershipId: number): Promise<MembershipWithPlan> =>
+  req(`/members/memberships/${membershipId}/freeze`, { method: 'POST' })
+
+export const unfreezeMembership = (membershipId: number): Promise<MembershipWithPlan> =>
+  req(`/members/memberships/${membershipId}/unfreeze`, { method: 'POST' })
 
 export const setMembershipActive = (membershipId: number, isActive: boolean): Promise<MembershipWithPlan> =>
   req(`/members/memberships/${membershipId}/active`, {
@@ -116,6 +134,151 @@ export const checkInAttendance = (document: string): Promise<CheckInResult> =>
 
 export const getVoucherStatus = (document: string): Promise<VoucherStatus> =>
   req(`/attendance/voucher-status/${encodeURIComponent(document)}`)
+
+// ── Store — Categories ────────────────────────────────────────────────────────
+export const getCategories = (activeOnly = false): Promise<ProductCategory[]> =>
+  req(`/store/categories${activeOnly ? '?active_only=true' : ''}`)
+
+export const createCategory = (data: ProductCategoryCreate): Promise<ProductCategory> =>
+  req('/store/categories', { method: 'POST', body: JSON.stringify(data) })
+
+export const updateCategory = (id: number, data: ProductCategoryUpdate): Promise<ProductCategory> =>
+  req(`/store/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+
+export const toggleCategory = (id: number, isActive: boolean): Promise<ProductCategory> =>
+  req(`/store/categories/${id}/active?is_active=${isActive}`, { method: 'PATCH' })
+
+export const deleteCategory = (id: number): Promise<void> =>
+  req(`/store/categories/${id}`, { method: 'DELETE' })
+
+// ── Store — Products ──────────────────────────────────────────────────────────
+export const getProducts = (params?: {
+  search?: string; categoryId?: number; lowStock?: boolean; activeOnly?: boolean; skip?: number; limit?: number
+}): Promise<ProductListResponse> => {
+  const q = new URLSearchParams()
+  if (params?.search) q.set('search', params.search)
+  if (params?.categoryId) q.set('category_id', String(params.categoryId))
+  if (params?.lowStock) q.set('low_stock', 'true')
+  if (params?.activeOnly) q.set('active_only', 'true')
+  if (params?.skip) q.set('skip', String(params.skip))
+  if (params?.limit) q.set('limit', String(params.limit))
+  const qs = q.toString()
+  return req(`/store/products${qs ? `?${qs}` : ''}`)
+}
+
+export const getProduct = (id: number): Promise<Product> =>
+  req(`/store/products/${id}`)
+
+export const createProduct = (data: ProductCreate): Promise<Product> =>
+  req('/store/products', { method: 'POST', body: JSON.stringify(data) })
+
+export const updateProduct = (id: number, data: ProductUpdate): Promise<Product> =>
+  req(`/store/products/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+
+export const toggleProduct = (id: number, isActive: boolean): Promise<Product> =>
+  req(`/store/products/${id}/active?is_active=${isActive}`, { method: 'PATCH' })
+
+export const deleteProduct = (id: number): Promise<void> =>
+  req(`/store/products/${id}`, { method: 'DELETE' })
+
+export const bulkDeleteProducts = (
+  ids: number[]
+): Promise<{ deleted: number[]; blocked: { id: number; reason: string }[] }> =>
+  req('/store/products/bulk-delete', { method: 'POST', body: JSON.stringify(ids) })
+
+// ── Store — Inventory ─────────────────────────────────────────────────────────
+export const registerEntry = (productId: number, data: InventoryEntryCreate): Promise<InventoryMovement> =>
+  req(`/store/products/${productId}/inventory/entry`, { method: 'POST', body: JSON.stringify(data) })
+
+export const registerAdjustment = (productId: number, data: InventoryAdjustmentCreate): Promise<InventoryMovement> =>
+  req(`/store/products/${productId}/inventory/adjustment`, { method: 'POST', body: JSON.stringify(data) })
+
+export const getMovements = (productId: number): Promise<InventoryMovement[]> =>
+  req(`/store/products/${productId}/inventory/movements`)
+
+export const getLowStock = (): Promise<Product[]> =>
+  req('/store/inventory/low-stock')
+
+// ── Store — Customers ─────────────────────────────────────────────────────────
+export const getCustomers = (params?: { q?: string; skip?: number; limit?: number }): Promise<Customer[]> => {
+  const qs = new URLSearchParams()
+  if (params?.q) qs.set('q', params.q)
+  if (params?.skip) qs.set('skip', String(params.skip))
+  if (params?.limit) qs.set('limit', String(params.limit))
+  const s = qs.toString()
+  return req(`/store/customers${s ? `?${s}` : ''}`)
+}
+
+export const searchCustomers = (q: string): Promise<Customer[]> =>
+  req(`/store/customers?q=${encodeURIComponent(q)}&limit=10`)
+
+export const createCustomer = (data: CustomerCreate): Promise<Customer> =>
+  req('/store/customers', { method: 'POST', body: JSON.stringify(data) })
+
+export const customerFromMember = (memberId: number): Promise<Customer> =>
+  req(`/store/customers/from-member/${memberId}`, { method: 'POST' })
+
+export const getCustomer = (id: number): Promise<Customer> =>
+  req(`/store/customers/${id}`)
+
+export const updateCustomer = (id: number, data: CustomerUpdate): Promise<Customer> =>
+  req(`/store/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+
+export const deleteCustomer = (id: number): Promise<void> =>
+  req(`/store/customers/${id}`, { method: 'DELETE' })
+
+// ── Store — Sales ─────────────────────────────────────────────────────────────
+export const purgeOrphanedSales = (): Promise<{ deleted: number }> =>
+  req('/store/sales/purge-orphaned', { method: 'POST' })
+
+export const createSale = (data: SaleCreate): Promise<Sale> =>
+  req('/store/sales', { method: 'POST', body: JSON.stringify(data) })
+
+export const getSales = (params?: {
+  customerId?: number; status?: string; fromDate?: string; toDate?: string; skip?: number; limit?: number
+}): Promise<SaleListResponse> => {
+  const q = new URLSearchParams()
+  if (params?.customerId) q.set('customer_id', String(params.customerId))
+  if (params?.status) q.set('status', params.status)
+  if (params?.fromDate) q.set('from_date', params.fromDate)
+  if (params?.toDate) q.set('to_date', params.toDate)
+  if (params?.skip) q.set('skip', String(params.skip))
+  if (params?.limit) q.set('limit', String(params.limit))
+  const qs = q.toString()
+  return req(`/store/sales${qs ? `?${qs}` : ''}`)
+}
+
+export const getSale = (id: number): Promise<Sale> =>
+  req(`/store/sales/${id}`)
+
+export const cancelSale = (id: number, note?: string): Promise<Sale> =>
+  req(`/store/sales/${id}/cancel${note ? `?note=${encodeURIComponent(note)}` : ''}`, { method: 'POST' })
+
+// ── Store — Credit Payments ───────────────────────────────────────────────────
+export const registerCreditPayment = (saleId: number, data: CreditPaymentCreate): Promise<CreditPayment> =>
+  req(`/store/sales/${saleId}/payments`, { method: 'POST', body: JSON.stringify(data) })
+
+export const getSalePayments = (saleId: number): Promise<CreditPayment[]> =>
+  req(`/store/sales/${saleId}/payments`)
+
+// ── Store — Cartera ───────────────────────────────────────────────────────────
+export const getCartera = (params?: { status?: string; skip?: number; limit?: number }): Promise<CarteraResponse> => {
+  const q = new URLSearchParams()
+  if (params?.status) q.set('status', params.status)
+  if (params?.skip) q.set('skip', String(params.skip))
+  if (params?.limit) q.set('limit', String(params.limit))
+  const qs = q.toString()
+  return req(`/store/cartera${qs ? `?${qs}` : ''}`)
+}
+
+// ── Store — Reports (Fase C) ──────────────────────────────────────────────────
+export const getStoreReport = (dateFrom?: string, dateTo?: string): Promise<StoreReport> => {
+  const q = new URLSearchParams()
+  if (dateFrom) q.set('date_from', dateFrom)
+  if (dateTo) q.set('date_to', dateTo)
+  const qs = q.toString()
+  return req(`/store/reports${qs ? `?${qs}` : ''}`)
+}
 
 // ── Body Measurements ─────────────────────────────────────────────────────────
 export const getMeasurements = (memberId: number) =>

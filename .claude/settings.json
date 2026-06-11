@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node *)",
+      "Bash(npm *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "El agente está a punto de modificar un archivo. Verifica silenciosamente que el cambio sea consistente con la estructura, patrones y convenciones existentes del proyecto. Valida reutilización de componentes o código existente cuando sea posible, evita duplicación innecesaria, respeta la separación de responsabilidades y evita soluciones temporales o hardcodeadas sin justificación. Si detectas una violación clara responde ok=false y una razón breve. Si todo es consistente responde ok=true.",
+            "statusMessage": "Validando consistencia...",
+            "continueOnBlock": true
+          }
+        ]
+      }
+    ]
+  }
+}

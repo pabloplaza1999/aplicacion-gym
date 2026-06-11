@@ -1,0 +1,76 @@
+============================================================
+TEST: Tienda Fase A - Categorias, Productos, Inventario, Ventas
+============================================================
+
+--- Categorias ---
+[PASS] Crear categoria - {"id":12,"name":"Suplementos_059107","description":null,"is_active":true,"create
+[PASS] Crear categoria duplicada -> 400
+[PASS] Listar categorias
+[PASS] Actualizar nombre categoria
+[PASS] Desactivar categoria
+[PASS] Activar categoria
+
+--- Productos ---
+[PASS] Crear producto con stock inicial - {"id":21,"category_id":12,"category_name":"Suplementos_v2_059107","name":"Protei
+[PASS] Producto tiene stock=10
+[PASS] is_low_stock=False con stock 10 y min 2
+[PASS] category_name presente
+[PASS] Crear producto duplicado -> 400
+[PASS] Crear producto categoria inexistente -> 400
+[PASS] Listar productos
+[PASS] Obtener producto por ID
+[PASS] Actualizar precio producto
+[PASS] Crear producto con stock bajo
+[PASS] is_low_stock=True (stock 1 <= min 3)
+[PASS] Low-stock endpoint retorna lista
+[PASS] Producto low-stock aparece en /inventory/low-stock
+[PASS] Desactivar producto
+[PASS] Activar producto
+
+--- Inventario ---
+[PASS] Registrar entrada inventario - {"id":27,"product_id":21,"product_name":"Proteina Whey 1kg_059107","type":"entry
+[PASS] stock_before + 5 = stock_after
+[PASS] Stock producto actualizado tras entrada (+5)
+[PASS] Ajuste negativo inventario
+[PASS] stock_after = stock_before - 3
+[PASS] Stock producto actualizado tras ajuste -3
+[PASS] Ajuste que dejaria stock negativo -> 400
+[PASS] Listar movimientos producto
+[PASS] Al menos 3 movimientos (inicial, entrada, ajuste)
+
+--- Ventas ---
+[PASS] Crear venta exitosa - {"id":2,"member_id":null,"member_name":null,"sale_date":"2026-06-10T02:39:16.709
+[PASS] Venta tiene items
+[PASS] subtotal = precio x cantidad
+[PASS] total = subtotal - descuento
+[PASS] status = completed
+[PASS] product_name en item de venta
+[PASS] Stock descontado tras venta (-2)
+[PASS] Movimiento tipo 'sale' registrado
+[PASS] Venta con stock insuficiente -> 409
+[PASS] Venta con producto inexistente -> 400
+[PASS] Venta sin items -> 422
+[PASS] Obtener venta por ID
+[PASS] Listar ventas
+[PASS] total_amount > 0
+
+--- Anulacion ---
+[PASS] Anular venta
+[PASS] Stock repuesto tras anulacion (+2)
+[PASS] Anular venta ya anulada -> 400
+
+--- Restricciones eliminacion ---
+[PASS] Eliminar producto con movimientos -> 400
+[PASS] Eliminar categoria con productos -> 400
+[PASS] Eliminar producto low-stock (204 o 400)
+
+--- Regresiones modulos existentes ---
+[PASS] Dashboard aun responde
+[PASS] Dashboard tiene frozen en memberships
+[PASS] Modulo miembros sin regresion
+[PASS] Modulo pagos sin regresion
+
+============================================================
+RESULTADO: 54/54 pruebas PASS - 0 FAIL
+STATUS: PASS
+============================================================
