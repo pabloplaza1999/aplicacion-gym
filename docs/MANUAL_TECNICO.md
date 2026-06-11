@@ -90,6 +90,99 @@ Verificaciones adicionales:
 
 ---
 
+## Operación diaria del PC del gimnasio
+
+### Flujo normal cada día
+
+1. **Encender el PC** normalmente.
+2. **Docker Desktop arranca solo** si está configurado (ver abajo). Esperar a que el ícono de la ballena en la barra de tareas esté estático (no animado).
+3. **Abrir el navegador** (Chrome o Edge) e ingresar a `http://localhost`.
+4. El sistema está listo para usar.
+
+> El operador no necesita abrir ninguna terminal ni ejecutar comandos. Si Docker está configurado para arrancar con Windows, el sistema queda disponible automáticamente al encender el PC.
+
+### Configurar Docker para arranque automático con Windows
+
+Hacer esto una sola vez después de instalar:
+
+1. Abrir **Docker Desktop** desde el menú de inicio.
+2. Hacer clic en el ícono de engranaje (Settings) arriba a la derecha.
+3. En **General**, activar **"Start Docker Desktop when you log in"**.
+4. Clic en **Apply & Restart**.
+
+Desde ese momento Docker arranca solo con Windows y los contenedores del sistema se levantan automáticamente.
+
+### Verificar que el sistema está corriendo
+
+Si la app no carga en el navegador, abrir **PowerShell** y ejecutar:
+
+```powershell
+docker compose ps
+```
+
+Resultado esperado — los tres contenedores deben estar en estado `Up` o `healthy`:
+
+```
+NAME                      STATUS
+appparagym-backend-1      Up (healthy)
+appparagym-frontend-1     Up
+appparagym-scheduler-1    Up
+```
+
+Si alguno aparece en `Exit` o no aparece, ver la sección **Recuperación ante fallo de Docker** más abajo.
+
+### Reinicio manual del sistema
+
+Si el sistema se comporta de forma inesperada (pantalla en blanco, datos no cargan, errores en la app), el primer paso es reiniciarlo. Abrir PowerShell en la carpeta del proyecto y ejecutar **un comando por vez**:
+
+```powershell
+docker compose down
+```
+
+Esperar que termine, luego:
+
+```powershell
+docker compose up -d
+```
+
+Volver a abrir `http://localhost` en el navegador.
+
+### Recuperación ante fallo de Docker
+
+**Caso 1 — Docker Desktop no arranca:**
+
+1. Buscar "Docker Desktop" en el menú de inicio y abrirlo manualmente.
+2. Si muestra error de virtualización, abrir PowerShell como administrador y ejecutar:
+```powershell
+wsl --install
+```
+Reiniciar el PC.
+
+**Caso 2 — Contenedores caídos (aparecen en `Exit`):**
+
+```powershell
+docker compose down
+docker compose up -d
+```
+
+**Caso 3 — El sistema no responde aunque los contenedores están `Up`:**
+
+```powershell
+docker compose logs backend --tail 30
+```
+
+Revisar los últimos logs en busca de errores. Si hay un error desconocido, contactar al técnico.
+
+**Caso 4 — Puerto ocupado (error "port is already allocated"):**
+
+```powershell
+netstat -ano | findstr :80
+```
+
+Identificar el proceso que usa el puerto 80 y cerrarlo, o reiniciar el PC.
+
+---
+
 ## Arranques posteriores
 
 Una vez instalado, el sistema se levanta con:
@@ -99,7 +192,7 @@ cd aplicacion-gym
 docker compose up -d
 ```
 
-Para que Docker arranque automáticamente con Windows: abrir Docker Desktop → Settings → **Start Docker Desktop when you log in** → activar.
+Si Docker está configurado para arrancar con Windows (ver sección anterior), esto ocurre automáticamente y no es necesario ejecutar ningún comando.
 
 ---
 
@@ -212,11 +305,35 @@ docker compose up -d
 
 ## Cambio de equipo o migración
 
-Para mover el sistema a otro PC:
+Para mover el sistema al PC del gimnasio o a un equipo nuevo:
 
-1. Crear backup de la base de datos (ver sección Backup).
-2. Instalar el sistema en el nuevo PC siguiendo esta guía desde el Paso 1.
-3. Copiar el archivo `gym_backup.db` al nuevo PC y restaurarlo.
+### En el PC origen (el que tiene los datos)
+
+1. Crear un backup manual desde el Dashboard → panel **Respaldos** → "Crear respaldo ahora".
+2. Copiar el archivo de backup (está en `aplicacion-gym/backups/manual/`) a una memoria USB.
+3. Anotar o copiar también el valor de `SECRET_KEY` del archivo `.env` — lo necesitarás en el nuevo PC para que el SMTP funcione.
+
+### En el PC destino (el nuevo)
+
+1. Seguir esta guía desde el **Paso 1 — Instalación desde cero**.
+2. En el **Paso 6**, además de copiar `.env.example` a `.env`, agregar la `SECRET_KEY` del PC origen:
+```env
+SECRET_KEY=la-misma-clave-del-pc-origen
+```
+3. Levantar el sistema:
+```powershell
+docker compose up -d
+```
+4. Restaurar la base de datos desde la USB:
+```powershell
+docker compose down
+docker run --rm -v appparagym_db-data:/data -v "${PWD}:/host" alpine sh -c "cp /host/backups/manual/gym_YYYY-MM-DD_HH-MM.db /data/gym.db"
+docker compose up -d
+```
+5. Abrir `http://localhost` — todos los datos del gimnasio deben aparecer.
+6. Ir a **Configuración** y verificar que el SMTP sigue funcionando con "Probar conexión".
+
+> Si se usa la misma `SECRET_KEY`, la contraseña SMTP queda descifrada correctamente y no es necesario reconfigurar el correo.
 
 ---
 
