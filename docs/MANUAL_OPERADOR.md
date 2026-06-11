@@ -4,15 +4,31 @@ Guía de uso diario para el personal del gimnasio.
 
 ---
 
-## Acceso al sistema
+## Rutina diaria de operación
 
-Abrir el navegador (Chrome o Edge) e ingresar a:
+### Al encender el PC
+
+1. Encender el PC normalmente.
+2. Esperar a que Docker Desktop arranque solo — el ícono de la ballena aparece en la barra de tareas (esquina inferior derecha). Cuando deja de estar animado, está listo.
+3. Abrir **Chrome o Edge** e ingresar a:
 
 ```
 http://localhost
 ```
 
-No se requiere usuario ni contraseña.
+No se requiere usuario ni contraseña. El sistema está listo para usar.
+
+> Si la página no carga, esperar 30 segundos y recargar. Docker puede tardar un momento en levantar los servicios.
+
+### Si el sistema no carga
+
+1. Verificar que el ícono de Docker está en la barra de tareas. Si no aparece, abrir **Docker Desktop** desde el menú de inicio y esperar.
+2. Recargar `http://localhost` en el navegador.
+3. Si sigue sin cargar, contactar al técnico.
+
+### Al cerrar el día
+
+No es necesario apagar el sistema manualmente. Al apagar el PC, Docker se detiene solo. Los datos quedan guardados automáticamente.
 
 ---
 
