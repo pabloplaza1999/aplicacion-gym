@@ -40,17 +40,25 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 
 ---
 
-## TD-04 — Uso de UTC en cálculos de vencimiento
+## TD-04 — UTC en restricción de asistencia diaria (check_in_date) — parcialmente resuelto
 
 - **ID:** TD-04
-- **Título:** Vigencia, asistencias diarias y panel de alertas se calculan en UTC.
-- **Descripción:** El backend usa `datetime.utcnow()` para calcular vencimientos, la restricción de una asistencia por cliente por día (`check_in_date`) y la clasificación de alertas de membresías en el Dashboard. El gimnasio opera en hora local (America/Bogota, UTC-5); cerca de la medianoche local puede haber desfase respecto a la fecha UTC.
-- **Riesgo:** Una asistencia registrada tarde en la noche (hora local) podría contarse en el día UTC siguiente. Un cliente cercano al vencimiento podría aparecer en una categoría de alerta distinta (p. ej. "Hoy" vs "1 día") dependiendo de la hora local al cargar el Dashboard.
-- **Impacto:** Bajo. Casos borde alrededor de la medianoche; poco frecuente en operación normal.
-- **Módulos afectados:** `dashboard_repository.py` (`get_membership_alerts`, `get_members_by_plan`), `membership_service.py`, `attendance_service.py`, `attendance_repository.py`, `init_db`/seeds que usan fechas, `services/dashboard_service.py` (`days_overdue` en `DebtorAlert` — Dashboard Fase B, `days_overdue` en `MembershipAlert` — resumen-control-membresias).
-- **Prioridad:** Baja.
-- **Mitigación actual:** Mantener UTC para conservar comportamiento homogéneo en todo el sistema.
-- **Solución futura:** Permitir configuración de zona horaria por gimnasio y realizar los cálculos utilizando dicha configuración. Impacta `get_membership_alerts`, `_calculate_status`, la restricción de check-in diario y el cálculo de `days_overdue` en alertas de cartera.
+- **Título:** La restricción UNIQUE `(member_id, check_in_date)` usa fecha UTC, no fecha Bogotá.
+- **Estado:** **Parcialmente resuelto** — ver fix `fix-plan-dia-timezone`.
+- **Descripción:** El backend almacena `check_in_date` como `date` UTC. Un cliente que registre asistencia entre las 19:00 y las 23:59 hora Bogotá obtiene `check_in_date` del día UTC siguiente, lo que podría permitir un doble check-in el día local correcto.
+- **Qué fue corregido (fix-plan-dia-timezone):**
+  - `_calculate_end_date` para Plan Día ahora calcula `end_date` como 23:59:59 hora Bogotá (no UTC).
+  - `get_membership_alerts` clasifica alertas usando fecha Bogotá local (`datetime.utcnow() + BOGOTA_OFFSET`).
+  - Visualización de todas las fechas de membresía en frontend usa `fmtBogotaDate` (timezone `America/Bogota`).
+  - `BOGOTA_OFFSET = timedelta(hours=-5)` centralizado en `app/core/config.py`.
+  - Migración correctiva aplicada a 6 registros históricos con lógica antigua (2026-06-12).
+- **Riesgo residual:** `check_in_date` en tabla `attendances` sigue siendo fecha UTC. Si un cliente registra asistencia después de las 19:00 Bogotá, `check_in_date` corresponde al día siguiente UTC, lo que puede:
+  - Permitir doble check-in en el día local.
+  - Mostrar la asistencia en el día incorrecto en un historial futuro.
+- **Impacto residual:** Medio. Afecta solo a clientes con valera que asistan después de las 19:00 Bogotá.
+- **Módulos afectados pendientes:** `attendance_repository.py` (`create_attendance` — usa `datetime.utcnow().date()`), restricción `UNIQUE(member_id, check_in_date)`.
+- **Prioridad:** Media.
+- **Solución futura:** Usar `(datetime.utcnow() + BOGOTA_OFFSET).date()` al generar `check_in_date` en `AttendanceRepository.create_attendance`. Requiere validar que la restricción UNIQUE siga siendo coherente con la nueva fecha local.
 
 ---
 
@@ -324,7 +332,7 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-01 | Valeras finalizadas no aparecen inactivas en Dashboard/current-membership | ~~Media~~ **RESUELTO** |
 | TD-02 | Coexistencia de valeras preexistentes en datos antiguos | ~~Media~~ **RESUELTO** |
 | TD-03 | Cédula no obligatoria pese a ser requerida para check-in | Media |
-| TD-04 | UTC en vencimientos, asistencias diarias y alertas Dashboard (desfase en medianoche local) | Baja |
+| TD-04 | UTC en asistencias diarias: `check_in_date` sigue usando fecha UTC (Plan Día y alertas ya corregidos) | Media |
 | TD-05 | Renovación no desactiva la membresía anterior | ~~Media~~ **RESUELTO** |
 | TD-06 | Visualización de valera solo en la página de Asistencia | Baja |
 | TD-07 | `Navbar.tsx` es código muerto | Baja |

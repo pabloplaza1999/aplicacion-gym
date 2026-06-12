@@ -14,7 +14,7 @@ class MemberRepository:
         """Initialize repository with database session."""
         self.db = db
 
-    def create(self, full_name: str, phone: str, document: Optional[str] = None, notes: Optional[str] = None) -> Member:
+    def create(self, full_name: str, phone: str, document: Optional[str] = None, email: Optional[str] = None, notes: Optional[str] = None) -> Member:
         """
         Create a new member.
 
@@ -22,6 +22,7 @@ class MemberRepository:
             full_name: Full name of the member
             phone: Phone number
             document: Optional document/ID
+            email: Optional email address
             notes: Optional notes
 
         Returns:
@@ -31,12 +32,17 @@ class MemberRepository:
             full_name=full_name,
             phone=phone,
             document=document,
+            email=email,
             notes=notes,
         )
         self.db.add(member)
         self.db.commit()
         self.db.refresh(member)
         return member
+
+    def get_by_document(self, document: str) -> Optional[Member]:
+        """Get member by document number."""
+        return self.db.query(Member).filter(Member.document == document).first()
 
     def get_by_id(self, member_id: int) -> Optional[Member]:
         """Get member by ID."""

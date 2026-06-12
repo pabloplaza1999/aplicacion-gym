@@ -3,12 +3,14 @@ SQLite. Archivo: `gym.db`. Auto-creacion via `Base.metadata.create_all()`.
 
 ## Tablas
 
-**members:** id PK | full_name | phone | document? | registration_date auto | notes? | is_active=true
+**members:** id PK | full_name | phone | document?(UNIQUE) | email? | registration_date auto | notes? | is_active=true
 
-**plans:** id PK | name | price | duration_days | plan_type(monthly/quarterly/semiannual/annual) | entry_count=0
+**plans:** id PK | name | price | duration_days | plan_type(monthly/quarterly/semiannual/annual/**daily**) | entry_count=0
 
 **memberships:** id PK | member_id FK | plan_id FK | start_date | end_date(auto) | is_active=true | entries_total?
 -> freeze: frozen_at? | frozen_days_remaining? | freeze_count=0
+-> end_date para plan_type=daily: calculado como 23:59:59 hora Bogotá (UTC-5) del día de inicio, almacenado como UTC.
+   Fórmula: `(start_utc + BOGOTA_OFFSET).replace(23,59,59) - BOGOTA_OFFSET`. Ver `BOGOTA_OFFSET` en `app/core/config.py`.
 
 **payments:** id PK | member_id FK | membership_id FK? | amount | payment_method(cash/transfer/qr/nequi) | payment_date auto
 

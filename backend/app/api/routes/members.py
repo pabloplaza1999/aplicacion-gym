@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.schemas.member import MemberCreate, MemberUpdate, MemberRead, MemberListResponse
-from app.services.member_service import MemberService
+from app.services.member_service import MemberService, DuplicateDocumentError
 
 router = APIRouter(prefix="/members", tags=["members"])
 
@@ -28,7 +28,10 @@ def create_member(
     - **notes**: Notes (optional)
     """
     service = MemberService(db)
-    return service.create_member(data)
+    try:
+        return service.create_member(data)
+    except DuplicateDocumentError:
+        raise HTTPException(status_code=409, detail="Ya existe un cliente con ese número de documento.")
 
 
 @router.get("", response_model=MemberListResponse)

@@ -5,6 +5,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.config import BOGOTA_OFFSET
 from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.membership_repository import MembershipRepository
 from app.schemas.membership import (
@@ -76,7 +77,7 @@ class MembershipService:
         Calculate end date based on plan duration.
 
         Rules:
-        - Plan Día (plan_type='daily'): vence el mismo día
+        - Plan Día (plan_type='daily'): vence a las 23:59:59 hora Bogotá del día de inicio
         - Plans mensuales: 30 días desde start_date
         """
         plan = self.repository.get_plan_by_id(plan_id)
@@ -84,7 +85,10 @@ class MembershipService:
             raise ValueError(f"Plan {plan_id} not found")
 
         if plan.plan_type == "daily":
-            return start_date.replace(hour=23, minute=59, second=59)
+            # Convert UTC start to Bogota local, set end-of-day, convert back to UTC.
+            start_local = start_date + BOGOTA_OFFSET
+            end_local = start_local.replace(hour=23, minute=59, second=59, microsecond=0)
+            return end_local - BOGOTA_OFFSET
         else:
             return start_date + timedelta(days=plan.duration_days)
 
@@ -177,7 +181,7 @@ class MembershipService:
             membership_id=membership.id,
             plan_name=plan.name if plan else None,
             entries_remaining=remaining,
-            end_date=membership.end_date.date().isoformat(),
+            end_date=(membership.end_date + BOGOTA_OFFSET).date().isoformat(),
         )
 
     def create_membership(self, data: MembershipCreate) -> MembershipRead:

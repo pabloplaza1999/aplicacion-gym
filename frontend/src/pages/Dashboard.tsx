@@ -6,6 +6,7 @@ import StatCard from '../components/StatCard'
 import Spinner from '../components/Spinner'
 import BackupModal from '../components/BackupModal'
 import NotificationHistoryModal from '../components/NotificationHistoryModal'
+import { fmtBogotaDate } from '../utils/validators'
 
 function fmt(n: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
@@ -213,7 +214,7 @@ function AlertsPanel({ alerts }: { alerts: AlertsSummary }) {
                       )}
                     </p>
                   </div>
-                  <span className={`text-xs font-mono shrink-0 ml-4 ${cfg.color}`}>{item.end_date}</span>
+                  <span className={`text-xs font-mono shrink-0 ml-4 ${cfg.color}`}>{fmtBogotaDate(item.end_date)}</span>
                 </div>
               ))}
             </div>
@@ -401,7 +402,7 @@ export default function Dashboard() {
                 <div key={i} className="py-3.5 flex items-center justify-between group hover:bg-surface-raised/40 hover:px-2 hover:-mx-2 rounded transition-all duration-150 cursor-default">
                   <div>
                     <p className="text-sm font-semibold text-white group-hover:text-brand-400 transition-colors">{r.member_name}</p>
-                    <p className="text-xs text-gray-600 font-mono mt-0.5">{r.plan_name} · hasta {r.end_date}</p>
+                    <p className="text-xs text-gray-600 font-mono mt-0.5">{r.plan_name} · hasta {fmtBogotaDate(r.end_date)}</p>
                   </div>
                   {r.amount_paid && <span className="text-brand-400 text-sm font-mono font-semibold">{fmt(r.amount_paid)}</span>}
                 </div>

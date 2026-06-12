@@ -8,6 +8,10 @@ from app.repositories.member_repository import MemberRepository
 from app.schemas.member import MemberCreate, MemberUpdate, MemberRead
 
 
+class DuplicateDocumentError(Exception):
+    """Raised when a member with the same document number already exists."""
+
+
 class MemberService:
     """Service for member business logic operations."""
 
@@ -24,11 +28,18 @@ class MemberService:
 
         Returns:
             Created member
+
+        Raises:
+            DuplicateDocumentError: If a member with the same document already exists.
         """
+        if data.document:
+            if self.repository.get_by_document(data.document):
+                raise DuplicateDocumentError()
         member = self.repository.create(
             full_name=data.full_name,
             phone=data.phone,
             document=data.document,
+            email=data.email,
             notes=data.notes,
         )
         return MemberRead.from_orm(member)
