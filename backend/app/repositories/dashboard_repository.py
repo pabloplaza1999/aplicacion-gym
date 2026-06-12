@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, date
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from app.core.config import BOGOTA_OFFSET
 from app.models.member import Member
 from app.models.membership import Membership
 from app.models.attendance import Attendance
@@ -283,14 +284,14 @@ class DashboardRepository:
         All plan types included (monthly, daily, voucher).
         Exhausted vouchers within date are treated as 'exhausted', not 'expiring'.
 
-        Groups (UTC dates):
+        Groups (Bogota local dates):
           expired     — best_state=expired (ordered DESC by end_date)
           today       — best_state=expiring, soonest end_date == today
           three_days  — best_state=expiring, soonest end_date in 1–3 days
           seven_days  — best_state=expiring, soonest end_date in 4–5 days
         Each group capped at per_group_limit rows.
         """
-        today = datetime.utcnow().date()
+        today = (datetime.utcnow() + BOGOTA_OFFSET).date()
 
         attendance_count_sq = (
             self.db.query(func.count(Attendance.id))
@@ -325,7 +326,7 @@ class DashboardRepository:
         member_memberships: dict = defaultdict(list)
 
         for row in rows:
-            end = row.end_date.date() if hasattr(row.end_date, "date") else row.end_date
+            end = (row.end_date + BOGOTA_OFFSET).date() if hasattr(row.end_date, "date") else row.end_date
             diff = (end - today).days
 
             if diff < 0:

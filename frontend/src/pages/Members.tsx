@@ -11,7 +11,7 @@ import Badge from '../components/Badge'
 import Spinner from '../components/Spinner'
 import Empty from '../components/Empty'
 import MemberInfo from '../components/MemberInfo'
-import { onlyLetters, onlyDigits, isValidEmail } from '../utils/validators'
+import { onlyLetters, onlyDigits, isValidEmail, fmtBogotaDate } from '../utils/validators'
 
 function fmt(n: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
@@ -193,8 +193,8 @@ function MemberDetail({ member, plans, onClose, onUpdated }: {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { label: 'Inicio',  value: membership.start_date.slice(0,10) },
-                      { label: 'Vence',   value: membership.end_date.slice(0,10) },
+                      { label: 'Inicio',  value: fmtBogotaDate(membership.start_date) },
+                      { label: 'Vence',   value: fmtBogotaDate(membership.end_date) },
                       { label: 'Días restantes', value: <span className="text-brand-400 font-mono font-bold">{membership.days_remaining}</span> },
                       { label: 'Precio',  value: <span className="font-mono">{fmt(membership.plan_price)}</span> },
                     ].map(({ label, value }) => (
@@ -208,7 +208,7 @@ function MemberDetail({ member, plans, onClose, onUpdated }: {
                     <div className="bg-sky-500/10 border border-sky-500/20 rounded p-3 space-y-1">
                       <p className="text-xs font-semibold text-sky-400 uppercase tracking-widest">Membresía congelada</p>
                       <p className="text-xs text-gray-400 font-mono">
-                        Desde: {membership.frozen_at.slice(0, 10)}
+                        Desde: {fmtBogotaDate(membership.frozen_at)}
                         {' · '}{membership.frozen_days_remaining} días pendientes
                       </p>
                     </div>

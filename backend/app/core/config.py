@@ -1,7 +1,12 @@
 """Application configuration."""
 
+from datetime import timedelta
 from pydantic_settings import BaseSettings
 from pathlib import Path
+
+# Colombia operates at UTC-5 year-round (no DST).
+# Used for converting UTC datetimes to local business dates (e.g. Plan Día end-of-day).
+BOGOTA_OFFSET = timedelta(hours=-5)
 
 
 class Settings(BaseSettings):

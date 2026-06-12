@@ -3,14 +3,15 @@ import { checkInAttendance, getVoucherStatus } from '../services/api'
 import type { CheckInResult, VoucherStatus } from '../types'
 import StatCard from '../components/StatCard'
 import Spinner from '../components/Spinner'
+import { normalizeUtcStr } from '../utils/validators'
 
 function fmtDate(iso: string) {
-  return new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso))
+  return new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }).format(new Date(normalizeUtcStr(iso)))
 }
 function fmtDateTime(iso: string) {
   return new Intl.DateTimeFormat('es-CO', {
-    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-  }).format(new Date(iso))
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota',
+  }).format(new Date(normalizeUtcStr(iso)))
 }
 
 interface VoucherView {
