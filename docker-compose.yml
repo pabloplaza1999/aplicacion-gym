@@ -3,8 +3,12 @@ services:
   backend:
     build:
       context: ./backend
+    # SEC-005/R3: bind parametrizado. Default seguro = loopback (solo la propia
+    # PC). Para un gimnasio multi-dispositivo en LAN, definir BIND_ADDR en .env
+    # (IP LAN o 0.0.0.0) junto con VITE_API_URL. Sin auth (F2), exponer en LAN
+    # es un riesgo residual documentado.
     ports:
-      - "8000:8000"
+      - "${BIND_ADDR:-127.0.0.1}:8000:8000"
     env_file: .env
     volumes:
       - db-data:/app/data
@@ -21,8 +25,9 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    # SEC-005/R3: mismo bind parametrizado que el backend (default loopback).
     ports:
-      - "80:80"
+      - "${BIND_ADDR:-127.0.0.1}:80:80"
     depends_on:
       backend:
         condition: service_healthy

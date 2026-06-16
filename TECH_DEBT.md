@@ -358,10 +358,21 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-27 | `import os` sin uso en `backup_service.py` | Baja |
 | TD-28 | `backup_type` en `create_backup` acepta strings arbitrarios sin validación de enum | Baja |
 | TD-29 | Límites de retención hardcodeados en `BackupModal` (30/10) en lugar de leerlos del backend | Baja |
-| TD-30 | `SECRET_KEY` vacía no bloquea arranque — error solo visible al usar SMTP | Baja |
+| TD-30 | `SECRET_KEY` vacía no bloquea arranque — SEC-009 | ~~Alta~~ **RESUELTO** |
 | TD-31 | Concurrencia scheduler + POST /run puede generar correo duplicado (ventana de segundos) | Baja |
 | TD-32 | `page_size` sin validación de rango en GET /notifications/history | Baja |
 | TD-33 | Scheduler sin healthcheck Docker — fallos solo visibles en logs del contenedor | Baja |
+| TD-34 | Contenedor corre como root — SEC-007 (F1) | ~~Alta~~ **RESUELTO** |
+| TD-35 | `cryptography 41.0.7` + deps desactualizadas con CVEs — SEC-008 (F1) | Alta |
+| TD-36 | Docs OpenAPI expuestas en producción — SEC-010 (F1) | Media |
+| TD-37 | `debug=True` por defecto en `config.py` — SEC-011 (F1) | ~~Media~~ **RESUELTO** |
+| TD-38 | CORS permisivo: `allow_credentials` + métodos/headers wildcard — SEC-012 (F1) | Media |
+| TD-39 | PII en logs 422: `exc.errors()` incluye `input` del cliente — SEC-013 (F1) | ~~Media~~ **RESUELTO** |
+| TD-40 | SQLite y backups sin cifrar en reposo — SEC-014 (diferido F4) | Media |
+| TD-41 | Sin cabeceras de seguridad HTTP en nginx — SEC-015 (F1) | Media |
+| TD-42 | Sin rate limiting en ningún endpoint — SEC-016 (diferido F5) | Media |
+| TD-43 | `str(e)` expuesto al cliente en errores de negocio — SEC-017 (F1) | Media |
+| TD-44 | Sin `TrustedHostMiddleware` — SEC-019 (diferido F5) | Baja |
 
 **Resueltos en fixes-post-tienda-b:**
 - `UNIQUE(member_id, check_in_date)` en attendances → migrada a `(membership_id, check_in_date)` ✅
@@ -382,6 +393,15 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 - TD-02: `_deactivate_duplicate_active_vouchers` en startup corrige coexistencias históricas de valeras ✅
 - TD-10: resuelto por transitividad (TD-05 + TD-02) ✅
 - TD-01: estado `exhausted` para valeras agotadas en `_enrich_membership` + subquery correlacionada en Dashboard ✅
+
+**Resueltos en F1 Bloque A — Endurecimiento del empaquetado (`f1-bloque-a-hardening`, 2026-06-15):**
+Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditado · Aprobado** (Paso 5 PASS con riesgos operativos · Paso 5.5 PASS sin impacto histórico · Paso 6 auditoría APROBADA). **Sin defectos abiertos.**
+- TD-30 (SEC-009): validación de arranque de `SECRET_KEY` (obligatoria en prod, opcional en dev) centralizada en `Settings` ✅
+- TD-34 (SEC-007): usuario no-root `gymuser` + entrypoint con reconciliación idempotente de permisos del volumen ✅
+- TD-37 (SEC-011): `debug=False` por defecto ✅
+- TD-39 (SEC-013): handler 422 saneado (sin `input`/PII) ✅
+- SEC-005 (sin TD directo): bind parametrizado `${BIND_ADDR:-127.0.0.1}` con default loopback ✅
+- **Actividad operativa de release pendiente (NO es deuda técnica):** rebuild + recreate de los contenedores en los entornos de producción actuales para materializar el endurecimiento (los contenedores en marcha siguen en las imágenes previas).
 
 ---
 
@@ -409,15 +429,16 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 
 ---
 
-## TD-30 — SECRET_KEY vacía no bloquea arranque del sistema
+## TD-30 — SECRET_KEY vacía no bloquea arranque del sistema · SEC-009
 
-- **ID:** TD-30
-- **Estado:** Abierto.
-- **Descripción:** Si `SECRET_KEY` no está configurada en `.env`, el sistema arranca normalmente. El error solo aparece al intentar guardar o usar la configuración SMTP (`encrypt`/`decrypt` lanzan `ValueError`). No hay validación en startup.
-- **Riesgo:** Bajo. El operador verá el error en la UI al intentar configurar. No afecta otras funcionalidades.
+- **ID:** TD-30 · **Hallazgo F0:** SEC-009 (Alta)
+- **Estado:** ✅ RESUELTO (F1 Bloque A · `f1-bloque-a-hardening`). Validado en Paso 5 (PASS con riesgos operativos) y Paso 5.5 (sin impacto histórico); auditoría Paso 6 APROBADA. Sin defectos abiertos.
+- **Solución aplicada:** `model_validator(mode="after")` en `Settings` (`config.py`) aborta el arranque si `secret_key` está vacía en producción (`debug=False`), con mensaje accionable que indica cómo generar la clave; en desarrollo (`debug=True`) se permite vacía con degradación. Corre para API y scheduler (ambos importan `settings`). `debug` default pasó a `False`. `.env.example` documenta la clave como obligatoria y **única por instalación**.
+- **Descripción:** `secret_key: str = ""` en `core/config.py` — vacío por defecto. El sistema arranca normalmente; el error solo aparece al intentar usar SMTP (`encrypt`/`decrypt` lanzan `ValueError`). Un operador puede arrancar en producción sin `SECRET_KEY` en `.env` sin advertencia visible.
+- **Riesgo:** Alto en producción sin `.env` bien configurado. Con `.env` correcto el riesgo operativo es bajo, pero la ausencia de validación en startup permite detectar el error solo en uso, no en arranque.
 - **Módulos afectados:** `backend/app/services/crypto_service.py`, `backend/app/core/config.py`.
-- **Prioridad:** Baja.
-- **Recomendación futura:** Agregar validación en startup que logee un warning si `SECRET_KEY` está vacía y las notificaciones están habilitadas.
+- **Prioridad:** Alta (ajustada desde Baja — ver F0 audit SEC-009).
+- **Recomendación futura (F1):** Validación en startup: si `SECRET_KEY` vacía y notificaciones habilitadas → log CRITICAL o arranque abortado. Documentar en `.env.example`.
 
 ---
 
@@ -457,6 +478,130 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 - **Módulos afectados:** `docker-compose.yml`, `backend/scheduler/main.py`.
 - **Prioridad:** Baja.
 - **Recomendación futura:** Añadir endpoint `/scheduler/health` que devuelva última ejecución de cada job, o escribir un archivo de heartbeat en cada ejecución exitosa verificable por el healthcheck de Docker.
+
+---
+
+## TD-34 — Contenedor backend/scheduler corre como root · SEC-007
+
+- **ID:** TD-34 · **Hallazgo F0:** SEC-007 (Alta)
+- **Estado:** ✅ RESUELTO (F1 Bloque A · `f1-bloque-a-hardening`). Validado en Paso 5 (usuario real `gymuser`/10001 vía `docker top`; escenarios fresco y upgrade root-owned) y Paso 5.5 (chown = solo ownership, sin tocar contenido); auditoría Paso 6 APROBADA. Sin defectos abiertos.
+- **Solución aplicada:** `backend/Dockerfile` crea usuario no-root `gymuser` (UID/GID 10001) e instala `gosu`. Nuevo `backend/docker-entrypoint.sh` arranca como root, hace `chown -R` idempotente de `/app/data` (R1: cubre upgrade sobre volumen existente con archivos root) y baja privilegios con `gosu gymuser`. Aplica por igual a backend y scheduler (comparten imagen). `.gitattributes` fuerza LF en `*.sh`.
+- **Descripción:** `backend/Dockerfile` no incluye directiva `USER`. El proceso corre como root dentro del contenedor. Igual para el servicio `scheduler`. Una vulnerabilidad de ejecución en la app otorga root en el contenedor, ampliando el radio de daño a volúmenes y red de Docker.
+- **Módulos afectados:** `backend/Dockerfile`, `docker-compose.yml` (servicio `scheduler`).
+- **Prioridad:** Alta.
+- **Recomendación futura (F1):** `RUN adduser --disabled-password gymuser && USER gymuser` en el Dockerfile (backend y scheduler).
+
+---
+
+## TD-35 — Dependencias desactualizadas con CVEs · SEC-008
+
+- **ID:** TD-35 · **Hallazgo F0:** SEC-008 (Alta)
+- **Estado:** Abierto — pendiente Human Gate F0.
+- **Descripción:** `cryptography==41.0.7` (cifra `smtp_password`) tiene CVEs conocidas corregidas en ≥42.x. FastAPI 0.104.1, uvicorn 0.24.0, SQLAlchemy 2.0.23, pydantic 2.5.0, apscheduler 3.10.4: versiones de fin de 2023 con correcciones de seguridad acumuladas.
+- **Módulos afectados:** `backend/requirements.txt`.
+- **Prioridad:** Alta.
+- **Recomendación futura (F1):** Actualizar a versiones estables actuales + adoptar `pip-audit` en el flujo de desarrollo.
+
+---
+
+## TD-36 — Docs OpenAPI expuestas en producción · SEC-010
+
+- **ID:** TD-36 · **Hallazgo F0:** SEC-010 (Media)
+- **Estado:** Abierto — pendiente Human Gate F0.
+- **Descripción:** `/docs`, `/redoc` y `/openapi.json` están activos en todo momento. En producción exponen toda la superficie de la API sin necesidad de ingeniería inversa.
+- **Módulos afectados:** `backend/app/main.py`.
+- **Prioridad:** Media.
+- **Recomendación futura (F1):** `docs_url=None, redoc_url=None` cuando `settings.debug=False`.
+
+---
+
+## TD-37 — debug=True por defecto en config · SEC-011
+
+- **ID:** TD-37 · **Hallazgo F0:** SEC-011 (Media)
+- **Estado:** ✅ RESUELTO (F1 Bloque A · `f1-bloque-a-hardening`). Validado en Paso 5 (prod `debug=False`, dev `debug=True`); auditoría Paso 6 APROBADA. Sin defectos abiertos.
+- **Solución aplicada:** `debug: bool = False` por defecto en `config.py`. Producción es segura por defecto; desarrollo activa `DEBUG=true` explícitamente en su `.env`. `.env.example` ya traía `DEBUG=false`.
+- **Descripción:** `debug: bool = True` en `core/config.py`. Sin `.env` correctamente configurado, el sistema arranca en modo debug (trazas detalladas, hot-reload, `/docs` activos).
+- **Módulos afectados:** `backend/app/core/config.py`, `backend/app/main.py`.
+- **Prioridad:** Media.
+- **Recomendación futura (F1):** Cambiar default a `False`; `True` solo en `.env` de desarrollo explícito.
+
+---
+
+## TD-38 — CORS permisivo: allow_credentials + métodos/headers wildcard · SEC-012
+
+- **ID:** TD-38 · **Hallazgo F0:** SEC-012 (Media)
+- **Estado:** Abierto — pendiente Human Gate F0.
+- **Descripción:** `CORSMiddleware` con `allow_credentials=True` + `allow_methods=["*"]` + `allow_headers=["*"]`. Cuando se implemente auth por cookie/sesión (F2), este CORS puede habilitar ataques CSRF cross-origin.
+- **Módulos afectados:** `backend/app/main.py`.
+- **Prioridad:** Media.
+- **Recomendación futura (F1):** Listar orígenes, métodos y headers explícitamente; `allow_credentials=False` si se usa JWT en header (no cookie).
+
+---
+
+## TD-39 — PII en logs 422: input del cliente registrado en logger · SEC-013
+
+- **ID:** TD-39 · **Hallazgo F0:** SEC-013 (Media)
+- **Estado:** ✅ RESUELTO (F1 Bloque A · `f1-bloque-a-hardening`). Validado en Paso 5 (log 422 con `loc/type/msg`, sin `input` ni PII); auditoría Paso 6 APROBADA. Sin defectos abiertos.
+- **Solución aplicada:** el handler `RequestValidationError` en `main.py` construye una lista saneada `{loc, type, msg}` por error y descarta `input`/`ctx` antes de loguear (nivel `warning`) y de responder. Se conserva el diagnóstico (campo + tipo + motivo) sin registrar el valor enviado por el cliente.
+- **Descripción:** El handler `RequestValidationError` en `main.py` llama `logger.warning(exc.errors())`. Pydantic incluye el campo `input` con el valor enviado por el cliente, que puede contener nombre, cédula, email u otros PII.
+- **Módulos afectados:** `backend/app/main.py` — handler `RequestValidationError`.
+- **Prioridad:** Media.
+- **Recomendación futura (F1):** Filtrar el campo `input` de cada error antes de loguear: `[{k: v for k, v in e.items() if k != "input"} for e in exc.errors()]`.
+
+---
+
+## TD-40 — SQLite y backups sin cifrar en reposo · SEC-014
+
+- **ID:** TD-40 · **Hallazgo F0:** SEC-014 (Media)
+- **Estado:** Abierto — diferido a F4/posterior.
+- **Descripción:** `gym.db` y los archivos en `backups/` contienen PII + datos financieros + datos de salud sin cifrado en disco. Acceso al volumen Docker o al sistema de archivos del host expone toda la BD.
+- **Módulos afectados:** Volumen `db-data`, `backend/app/services/backup_service.py`.
+- **Prioridad:** Media.
+- **Recomendación futura (F4):** Evaluar SQLCipher o cifrado del volumen a nivel de host. Prioritario si el servidor de producción es compartido o no es de confianza exclusiva.
+
+---
+
+## TD-41 — Sin cabeceras de seguridad HTTP en nginx · SEC-015
+
+- **ID:** TD-41 · **Hallazgo F0:** SEC-015 (Media)
+- **Estado:** Abierto — pendiente Human Gate F0.
+- **Descripción:** `nginx.conf` no incluye `Strict-Transport-Security`, `X-Frame-Options`, `X-Content-Type-Options`, `Content-Security-Policy`, `Referrer-Policy`. Expone el frontend a clickjacking, MIME-sniffing y ataques de navegador.
+- **Módulos afectados:** `frontend/nginx.conf`.
+- **Prioridad:** Media.
+- **Recomendación futura (F1):** Añadir bloque `add_header` con las cabeceras estándar. `HSTS` solo cuando TLS esté activo (F5).
+
+---
+
+## TD-42 — Sin rate limiting en ningún endpoint · SEC-016
+
+- **ID:** TD-42 · **Hallazgo F0:** SEC-016 (Media)
+- **Estado:** Abierto — diferido a F5.
+- **Descripción:** No existe throttling. Pre-F2: vector de DoS de recursos. Post-F2: fuerza bruta en login queda abierta.
+- **Módulos afectados:** `backend/app/main.py`, reverse proxy (pendiente F5).
+- **Prioridad:** Media.
+- **Recomendación futura (F5):** Rate limiting en el reverse proxy (Nginx/Caddy) + `slowapi` en FastAPI para endpoints de auth.
+
+---
+
+## TD-43 — str(e) expuesto al cliente en errores de negocio · SEC-017
+
+- **ID:** TD-43 · **Hallazgo F0:** SEC-017 (Media)
+- **Estado:** Abierto — pendiente Human Gate F0.
+- **Descripción:** Múltiples endpoints hacen `raise HTTPException(status_code=400, detail=str(e))` capturando `ValueError`. Puede filtrar rutas internas, nombres de módulos u otros detalles del stack.
+- **Módulos afectados:** `api/routes/payments.py`, `store.py`, `members.py` (múltiples handlers `except ValueError`).
+- **Prioridad:** Media.
+- **Recomendación futura (F1):** Mapear excepciones de dominio a mensajes controlados. `str(e)` solo para excepciones explícitamente diseñadas para el cliente (ej. `DuplicateDocumentError`, `InsufficientStockError`).
+
+---
+
+## TD-44 — Sin TrustedHostMiddleware · SEC-019
+
+- **ID:** TD-44 · **Hallazgo F0:** SEC-019 (Baja)
+- **Estado:** Abierto — diferido a F5.
+- **Descripción:** FastAPI no valida el header `Host`. En un entorno con reverse proxy o multi-tenant, puede habilitar host-header injection.
+- **Módulos afectados:** `backend/app/main.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura (F5):** `TrustedHostMiddleware` con la lista de hosts permitidos, configurada por despliegue en `.env`.
 
 ---
 

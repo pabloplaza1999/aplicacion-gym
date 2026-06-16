@@ -1,0 +1,4 @@
+# Shell scripts ejecutados dentro de contenedores Linux deben conservar LF.
+# Un CRLF rompería el shebang (#!/bin/sh) en el contenedor.
+*.sh text eol=lf
+backend/docker-entrypoint.sh text eol=lf

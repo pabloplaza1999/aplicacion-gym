@@ -270,6 +270,40 @@ POST /api/notifications/run — ejecuta ciclo manualmente
 | `frontend/src/pages/Dashboard.tsx` | Panel operativo Notificaciones |
 | `frontend/src/App.tsx` | Ruta /configuracion + entrada sidebar |
 
+🔧 f0-baseline-seguridad F0 — Línea base de seguridad: auditoría integral sin cambios de código. 20 hallazgos SEC-001→SEC-020 (OWASP API Top 10). Artefactos: `docs/BASELINE_SEGURIDAD.md` (hallazgos) y `docs/ROADMAP_COMERCIALIZACION.md` (fases F0-F9). Deuda técnica derivada: TD-34 a TD-44. Siguiente paso: Human Gate — revisar y aprobar hallazgos antes de F1.
+
+🔧 f1-bloque-a-hardening **F1 — Endurecimiento del empaquetado (Bloque A).** Cinco hallazgos P0 del baseline, sin tocar lógica de negocio ni contratos de endpoints.
+- **SEC-011** — `debug` default `False` en `config.py` (seguro por defecto; desarrollo activa `DEBUG=true` explícitamente).
+- **SEC-009** — Validación de arranque centralizada en `Settings` (`model_validator`): en producción (`debug=False`) `SECRET_KEY` es obligatoria → aborta el arranque con mensaje accionable; en desarrollo se permite vacía con degradación (cifrado SMTP falla solo al usarse). Corre para API y scheduler (ambos importan `settings`). Cierra TD-30.
+- **SEC-013** — Handler 422 en `main.py` sanitiza el log y la respuesta: conserva `loc`+`type`+`msg`, elimina `input`/`ctx` (PII: nombres, cédulas, emails). Nivel `warning`. Cierra TD-39.
+- **SEC-007 + R1** — `backend/Dockerfile` crea usuario no-root `gymuser` (UID/GID 10001) + instala `gosu`. Nuevo `backend/docker-entrypoint.sh`: arranca como root, hace `chown -R` idempotente de `/app/data` y baja privilegios con `gosu`. Cubre backend y scheduler (misma imagen) y resuelve el caso upgrade sobre volumen existente con archivos root. Cierra TD-34.
+- **SEC-005 + R3** — `docker-compose.yml` parametriza el bind: `${BIND_ADDR:-127.0.0.1}` en puertos `8000` y `80`. Default loopback (exposición mínima, PC única); multi-dispositivo LAN se configura por instalación (`BIND_ADDR` + `VITE_API_URL`). Sin hardcodear loopback. Residual sin auth → revisar en F2.
+- **`.gitattributes`** nuevo: fuerza LF en `*.sh` (evita CRLF que rompería el shebang del entrypoint en Linux).
+
+### Archivos (f1-bloque-a-hardening)
+| Archivo | Cambio |
+|---|---|
+| `backend/app/core/config.py` | `debug` default `False` + `model_validator` SECRET_KEY obligatoria en prod |
+| `backend/app/main.py` | Handler 422 sanitizado (sin `input`), nivel `warning` |
+| `backend/Dockerfile` | Usuario no-root `gymuser` + `gosu` + ENTRYPOINT |
+| `backend/docker-entrypoint.sh` | **Nuevo** — reconciliación idempotente de permisos + drop a no-root |
+| `docker-compose.yml` | Bind parametrizado `${BIND_ADDR:-127.0.0.1}` (backend y frontend) |
+| `.env.example` | `SECRET_KEY` obligatoria/única + `BIND_ADDR` documentados |
+| `.gitattributes` | **Nuevo** — LF forzado en `*.sh` |
+
+### Validación parcial (Paso 4)
+- `config.py`/`main.py` parsean sin error. SEC-009/011 verificados en 3 escenarios: prod sin clave aborta (`ValidationError`); prod con clave arranca; dev sin clave arranca. `docker compose config` válido; bind resuelve a `127.0.0.1` por defecto. Entrypoint en LF.
+
+### Estado final (Pasos 5–7)
+**Estado técnico:** Implementado · Probado · Auditado · Aprobado. Sin defectos abiertos.
+- Paso 5 (PASS con riesgos operativos): e2e en Docker. Usuario real del proceso = `gymuser`/10001 (`docker top` sobre uvicorn y scheduler). Instalación nueva (volumen fresco) y upgrade sobre volumen root-owned (permisos reconciliados `0:0`→`10001:10001`). Escritura `gym.db` (POST 201), backup manual y automático OK bajo no-root. Log 422 sin `input`/PII.
+- Paso 5.5 (PASS — sin impacto histórico): sin cambios de esquema, migraciones, registros, contratos API ni backups existentes. El `chown` afecta solo ownership de filesystem, no el contenido de los datos.
+- Paso 6 (auditoría APROBADA): implementación coincide con el diseño; sin regresiones; riesgos exclusivamente operativos/de despliegue.
+
+**Estado de despliegue:** ⏳ Pendiente de rebuild + recreate en los entornos de producción actuales (los contenedores en marcha siguen en las imágenes previas — root, bind `0.0.0.0`). Es actividad operativa de release, no deuda técnica.
+
 ## Próximo paso
-Notificaciones Fase 3: canales adicionales (WhatsApp/SMS) o plantillas personalizables
-Tienda Fase D: exportación de reportes o mejoras operativas
+Paso 5 — pruebas F1 Bloque A: validar instalación nueva y upgrade sobre volumen existente (escritura `gym.db`, backups auto/manual, usuario efectivo del proceso = `gymuser`).
+F1 Bloque B (P2): SEC-010/012/015/017 + SEC-008 (deps). → F2 auth staff.
+Notificaciones Fase 3: canales adicionales (WhatsApp/SMS) o plantillas personalizables.
+Tienda Fase D: exportación de reportes o mejoras operativas.

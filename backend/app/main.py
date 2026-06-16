@@ -42,14 +42,20 @@ def create_app() -> FastAPI:
         """Initialize database on startup."""
         init_db()
 
-    # Validation error handler — logs exact field/reason for 422 errors
+    # Validation error handler — logs field/reason for 422 errors.
+    # SEC-013: never log the client-submitted value (`input`/`ctx` may carry PII:
+    # names, documents, emails). Keep `loc` (field) + `type` + `msg` for diagnosis.
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        logger.error(
+        sanitized = [
+            {"loc": e.get("loc"), "type": e.get("type"), "msg": e.get("msg")}
+            for e in exc.errors()
+        ]
+        logger.warning(
             "422 Validation Error | %s %s | detail: %s",
-            request.method, request.url, exc.errors()
+            request.method, request.url, sanitized
         )
-        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(sanitized)})
 
     # Include routers
     app.include_router(members.router, prefix="/api")
