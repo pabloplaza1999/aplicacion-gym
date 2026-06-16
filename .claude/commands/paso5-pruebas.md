@@ -4,19 +4,75 @@
 
 # 
 
-# Validar que la funcionalidad implementada funciona correctamente, cumple los requisitos aprobados y no genera regresiones sobre funcionalidades existentes.
+# Validar que la funcionalidad implementada:
+
+# 
+
+# Funciona correctamente.
+
+# Cumple los requisitos aprobados.
+
+# No genera regresiones.
+
+# Está lista para evaluación de datos históricos (Paso 5.5).
+
+# Alcance
+
+# 
+
+# Este paso valida exclusivamente:
+
+# 
+
+# Implementación realizada.
+
+# Flujos funcionales afectados.
+
+# Reglas de negocio implementadas.
+
+# Integraciones afectadas.
+
+# Regresiones funcionales.
+
+# 
+
+# No valida:
+
+# 
+
+# Datos históricos existentes.
+
+# Migraciones correctivas.
+
+# Calidad de datos acumulados.
+
+# Impacto sobre registros previos.
+
+# Consistencia histórica de información.
+
+# 
+
+# Estos aspectos corresponden al Paso 5.5.
 
 # 
 
 # Instrucciones
 
+# 
+
 # NO implementar nuevas funcionalidades.
+
+# 
 
 # NO corregir errores durante esta fase.
 
+# 
+
 # NO realizar refactorizaciones.
 
-# La responsabilidad de esta fase es validar y reportar.
+# 
+
+# La responsabilidad de esta fase es únicamente validar y reportar.
 
 # 
 
@@ -26,7 +82,7 @@
 
 # Documentarlo.
 
-# Clasificar su severidad.
+# Clasificar severidad.
 
 # Identificar impacto.
 
@@ -50,15 +106,15 @@
 
 # 
 
-# Compilación
+# Compilación.
 
-# Imports
+# Imports.
 
-# Tipado
+# Tipado.
 
-# Dependencias
+# Dependencias.
 
-# Errores de construcción
+# Errores de construcción.
 
 # 2\. Validación funcional
 
@@ -228,10 +284,6 @@
 
 # 
 
-# Validar módulos relacionados.
-
-# 
-
 # Indicar:
 
 # 
@@ -296,21 +348,39 @@
 
 # PASS
 
+# 
+
 # No se encontraron defectos.
+
+# 
 
 # La funcionalidad cumple los requisitos aprobados.
 
+# 
+
 # PASS CON RIESGOS
+
+# 
 
 # Existen riesgos o limitaciones conocidas.
 
+# 
+
 # No impiden el uso de la funcionalidad.
+
+# 
 
 # FAIL
 
+# 
+
 # Existen defectos que requieren ejecutar /fix-bug.
 
-# No se recomienda avanzar a documentación o cierre.
+# 
+
+# No se recomienda avanzar.
+
+# 
 
 # Registro de deuda técnica
 
@@ -356,15 +426,41 @@
 
 # Recomendación final
 
+# Flujo de salida
+
 # 
 
 # Si el resultado es:
 
 # 
 
-# PASS → continuar a Paso 6
+# PASS
 
-# PASS CON RIESGOS → continuar a Paso 6 y registrar TECH\_DEBT
+# 
 
-# FAIL → ejecutar /fix-bug y repetir Paso 5
+# → Continuar a Paso 5.5 — Validación de datos e impacto histórico
+
+# 
+
+# PASS CON RIESGOS
+
+# 
+
+# → Registrar TECH\_DEBT si aplica
+
+# 
+
+# → Continuar a Paso 5.5 — Validación de datos e impacto histórico
+
+# 
+
+# FAIL
+
+# 
+
+# → Ejecutar /fix-bug
+
+# 
+
+# → Repetir Paso 5
 
