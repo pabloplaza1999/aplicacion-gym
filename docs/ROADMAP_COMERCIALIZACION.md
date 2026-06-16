@@ -112,6 +112,7 @@ cerrarse. La ejecución sigue el flujo `paso1` → `paso8` del proyecto.
 - **Nota técnica `0.0.0.0`:** dentro de Docker es correcto; el control real es no publicar el
   puerto crudo en el host y poner un reverse proxy con TLS delante (se materializa en F5 para Premium).
 - **Gate:** re-auditar config de producción; confirmar que ningún secreto queda en la imagen/repo.
+- **Despliegue Bloque A:** procedimiento oficial en `docs/RELEASE_F1_BLOQUE_A.md` (checklist de pre-despliegue, pasos de rebuild/recreate, rollback y validación post-release para las dos instalaciones Local).
 
 ### F2 — Autenticación y autorización (staff)
 - **Objetivo:** ningún endpoint operativo accesible sin identidad. Prerrequisito para exponer a internet.
