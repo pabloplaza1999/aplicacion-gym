@@ -9,3 +9,5 @@ gym_e2e.db
 # Docker build artifacts
 frontend/dist/
 frontend/node_modules/
+# Word temporary files
+~$*.docx
