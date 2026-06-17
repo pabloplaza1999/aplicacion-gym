@@ -3,11 +3,13 @@ import { checkInAttendance, getVoucherStatus } from '../services/api'
 import type { CheckInResult, VoucherStatus } from '../types'
 import StatCard from '../components/StatCard'
 import Spinner from '../components/Spinner'
-import { normalizeUtcStr } from '../utils/validators'
+import { normalizeUtcStr, normalizeDateStr } from '../utils/validators'
 
+// end_date is a business calendar date (midnight naive UTC) — use normalizeDateStr
 function fmtDate(iso: string) {
-  return new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }).format(new Date(normalizeUtcStr(iso)))
+  return new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Bogota' }).format(new Date(normalizeDateStr(iso)))
 }
+// check_in_at is a real UTC timestamp — use normalizeUtcStr (appends Z)
 function fmtDateTime(iso: string) {
   return new Intl.DateTimeFormat('es-CO', {
     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota',

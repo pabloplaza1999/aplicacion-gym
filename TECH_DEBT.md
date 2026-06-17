@@ -617,6 +617,48 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 
 ---
 
+## TD-45 — Teléfonos placeholder `0000000` en ~20 clientes migrados
+
+- **ID:** TD-45
+- **Estado:** Abierto.
+- **Descripción:** Durante la migración inicial desde Excel, ~20 clientes no tenían teléfono registrado. Se usó `0000000` como placeholder para cumplir con el campo obligatorio del sistema.
+- **Riesgo:** El scheduler de notificaciones podría intentar contactar números inválidos si en el futuro se integra SMS. Actualmente no hay impacto funcional.
+- **Módulos afectados:** Tabla `members` — filas con `phone = '0000000'`.
+- **Prioridad:** Baja.
+- **Recomendación futura:** El operador debe actualizar los teléfonos desde la pestaña Info de cada cliente en la app. No requiere cambio de código.
+
+---
+
+## TD-46 — `_calculate_status` compara `end_date` UTC contra `datetime.utcnow()`
+
+- **ID:** TD-46
+- **Estado:** Abierto.
+- **Descripción:** `MembershipService._calculate_status` compara `end_date` (almacenado como datetime UTC medianoche) contra `datetime.utcnow()`. En Bogotá (UTC-5), esto provoca que una membresía que vence el día X aparezca como `expired` desde las 19:00 del día X-1 hora local, es decir, ~5 horas antes del vencimiento real percibido por el operador.
+- **Riesgo:** El dashboard y el badge de estado muestran `Vencida` el último día de la membresía del cliente, generando falsa alarma operativa y potencialmente bloqueando renovaciones al operador antes de tiempo.
+- **Registros afectados:** Todos los clientes cuya membresía vence ese día. Con 50 clientes migrados, ocurre sistemáticamente en el último día de cada membresía.
+- **Módulos afectados:** `backend/app/services/membership_service.py` — método `_calculate_status`.
+- **Prioridad:** Media.
+- **Recomendación futura:** Reemplazar `datetime.utcnow()` por `datetime.utcnow() + BOGOTA_OFFSET` en la comparación. Alternativamente, almacenar `end_date` como medianoche hora Bogotá y comparar contra `datetime.utcnow() + BOGOTA_OFFSET`. Leer `config.BOGOTA_OFFSET` ya disponible en el proyecto.
+
+---
+
+## TD-47 — `docker compose build frontend` puede servir bundle obsoleto (caché de contexto)
+
+- **ID:** TD-47
+- **Estado:** Abierto (operativo / infraestructura).
+- **Descripción:** En este entorno (Docker Desktop / Windows), `docker compose build frontend` — incluso con `--no-cache` — reutilizó un contexto de build cacheado y compiló código fuente obsoleto, generando siempre el mismo hash de bundle (`index-CsOxx0Cq.js`) pese a cambios reales en `src/`. El navegador recibía la versión vieja y rota.
+- **Riesgo:** Desplegar una versión antigua del frontend sin notarlo; los cambios de código no se reflejan en producción.
+- **Diagnóstico confirmado:** Compilar montando el código fuente directamente (`docker run --rm -v "<host>/frontend:/app" -w /app node:20-alpine npm run build`) produjo un hash distinto y correcto, probando que el build normal usaba fuente obsoleta.
+- **Procedimiento confiable de build (workaround):**
+  1. `docker builder prune -f` antes de reconstruir, **o**
+  2. compilar por montaje directo y desplegar el `dist/` resultante con `docker cp ./frontend/dist/. aplicacion-gym-frontend-1:/usr/share/nginx/html/`.
+  Tras reconstruir la imagen, recrear el contenedor con `docker compose up -d --force-recreate frontend` y verificar el hash servido en `index.html`.
+- **Módulos afectados:** Pipeline de build del servicio `frontend` (Docker Compose).
+- **Prioridad:** Media.
+- **Recomendación futura:** Investigar la causa raíz (sincronización de archivos de Docker Desktop en Windows / caché de BuildKit) o añadir un paso de verificación de hash post-build al procedimiento de despliegue.
+
+---
+
 ## TD-26 — Backup automático de volumen SQLite no implementado ✅ RESUELTO
 
 - **ID:** TD-26

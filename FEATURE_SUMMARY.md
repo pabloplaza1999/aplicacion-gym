@@ -2,6 +2,8 @@
 
 ## Estado
 ✅ Sprint 1-7 completos (backend + frontend)
+🔧 migracion-inicial 50 clientes migrados desde Excel (CLIENTES.xlsm) vía API REST. Cada cliente incluye: member, membresía con plan correcto (start=vencimiento−30d, end=fecha Excel), pago en efectivo al precio del plan. Teléfonos faltantes con placeholder 0000000 para ajuste posterior desde la app. semipersonalizado → Funcional y Musculación.
+🔧 fix-fecha-vencimiento-tz Corrección de desfase de un día (y crash del Dashboard) al mostrar fechas. Causa: el frontend trataba fechas de negocio (start/end_date, naive UTC) como timestamps y al convertir a Bogotá restaba un día; además /dashboard devuelve end_date como solo-fecha ("2026-07-20") y appendear -05:00 producía fecha inválida → RangeError → pantalla negra. Solución (utils/validators.ts): nueva helper normalizeDateStr (maneja date-only y datetime naive, agrega T00:00:00 si falta hora y offset -05:00; respeta strings con TZ) usada por fmtBogotaDate; guarda isNaN para no tumbar la SPA ante fecha malformada. normalizeUtcStr intacto para timestamps reales (check_in_at). Attendance.tsx: fmtDate→normalizeDateStr, fmtDateTime→normalizeUtcStr. Sin cambios de backend, esquema ni datos. Build Docker requiere builder prune previo (ver TD-47).
 🔧 fix1 GET /api/plans + selector plan vacío
 🔧 fix2 DELETE pago individual
 🔧 fix3 member_name en tabla Pagos (JOIN)
