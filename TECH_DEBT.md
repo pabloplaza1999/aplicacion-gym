@@ -234,10 +234,11 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 
 ---
 
-## TD-19 — Columna `sales.member_id` legado en base de datos
+## TD-19 — Columna `sales.member_id` legado en base de datos ✅ RESUELTO
 
 - **ID:** TD-19
-- **Título:** Columna `member_id` existe en tabla `sales` pero ya no forma parte del ORM.
+- **Estado:** Resuelto — Cliente Único Phase 1 (2026-06-17). `member_id` reincorporada al ORM como FK canónica hacia `Member`. Ver TD-48 para el estado transitorio de `customer_id`.
+- **Título (original):** Columna `member_id` existe en tabla `sales` pero ya no forma parte del ORM.
 - **Descripción:** En la Fase B se eliminó `member_id` del modelo ORM `Sale` para usar `customer_id` como relación principal. La columna sigue existiendo físicamente en SQLite (no es posible DROP COLUMN en versiones <3.35 sin recrear la tabla). SQLAlchemy la ignora, pero ocupa espacio y puede confundir inspecciones directas de la BD.
 - **Riesgo:** Bajo. La migración histórica ya leyó los valores de `member_id` para crear los `Customer` correspondientes. La columna es desde ahora inerte.
 - **Impacto:** Bajo. Solo espacio y claridad en inspección directa de BD.
@@ -347,7 +348,7 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-16 | Trazabilidad anulación/reposición solo por texto libre | Baja |
 | TD-17 | Eliminación de producto no restaura stock del historial (relevante si soft-delete futuro) | Baja |
 | TD-18 | Ajuste de stock desde edición de producto sin validación UX de rango negativo | Baja |
-| TD-19 | Columna `sales.member_id` legado en BD, ignorada por ORM | Baja |
+| TD-19 | Columna `sales.member_id` legado en BD, ignorada por ORM | ~~Baja~~ **RESUELTO** |
 | TD-20 | `purge_orphaned_cancelled` usa iteración Python en lugar de DELETE SQL en bloque | Baja |
 | TD-21 | FK `credit_payments.sale_id` sin CASCADE DELETE + reutilización IDs SQLite | ~~Media~~ **RESUELTO** |
 | TD-22 | `_STATE_PRIORITY` definida solo en `dashboard_repository.py`, no en módulo compartido | Baja |
@@ -373,6 +374,10 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-42 | Sin rate limiting en ningún endpoint — SEC-016 (diferido F5) | Media |
 | TD-43 | `str(e)` expuesto al cliente en errores de negocio — SEC-017 (F1) | Media |
 | TD-44 | Sin `TrustedHostMiddleware` — SEC-019 (diferido F5) | Baja |
+| TD-48 | Tabla `customers`, `CustomerService` y `sales.customer_id` mantenidos transitoriamente (Cliente Único Phase 1) | Baja |
+| TD-49 | `CreditPayment` definido en `customer.py`, importado por `member_repository.py` — acoplamiento cruzado | Baja |
+| TD-50 | `POST /store/sales` acepta `customer_id` (member_id) inexistente — SQLite FK=0, sin validación explícita | Baja |
+| TD-51 | Validación de actualización de producción para Cliente Único Phase 1 — pendiente auditoría sobre datos reales | Alta |
 
 **Resueltos en fixes-post-tienda-b:**
 - `UNIQUE(member_id, check_in_date)` en attendances → migrada a `(membership_id, check_in_date)` ✅
@@ -393,6 +398,9 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 - TD-02: `_deactivate_duplicate_active_vouchers` en startup corrige coexistencias históricas de valeras ✅
 - TD-10: resuelto por transitividad (TD-05 + TD-02) ✅
 - TD-01: estado `exhausted` para valeras agotadas en `_enrich_membership` + subquery correlacionada en Dashboard ✅
+
+**Resueltos en Cliente Único Phase 1 (`cliente-unico`, 2026-06-17):**
+- TD-19: `sales.member_id` promovida a columna canónica del ORM; `Sale.member_id` + `Member` son ahora la entidad central de ventas. `sales.customer_id` pasa a ser la columna legado (ver TD-48). ✅
 
 **Resueltos en F1 Bloque A — Endurecimiento del empaquetado (`f1-bloque-a-hardening`, 2026-06-15):**
 Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditado · Aprobado** (Paso 5 PASS con riesgos operativos · Paso 5.5 PASS sin impacto histórico · Paso 6 auditoría APROBADA). **Sin defectos abiertos.**
@@ -672,3 +680,70 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 - **Why:** La arquitectura SQLite + volumen Docker es correcta para el tamaño del negocio, pero no incluye resiliencia operativa ante errores humanos.
 - **How to apply:** Antes de cualquier despliegue en servidor de producción real, implementar un cron de backup diario en el host. El procedimiento está documentado en `README.md` (sección "Respaldo y restauración").
 - **Recomendación futura:** Cron en el host que ejecute `docker run --rm -v appparagym_db-data:/data -v /ruta/backups:/backup alpine cp /data/gym.db /backup/gym_FECHA.db` diariamente.
+
+---
+
+## TD-48 — Tabla `customers`, `CustomerService` y columna `sales.customer_id` mantenidos transitoriamente (Cliente Único Phase 1)
+
+- **ID:** TD-48
+- **Título:** Artefactos del modelo antiguo `Customer` retenidos para compatibilidad durante la transición.
+- **Descripción:** La iniciativa Cliente Único (Phase 1) migró toda la lógica de ventas a `Sale.member_id` + `Member` como entidad canónica. Sin embargo, se conservan deliberadamente para evitar regresiones en frontend:
+  - Tabla `customers` en SQLite (con sus filas existentes).
+  - Modelo ORM `Customer` en `models/customer.py`.
+  - `CustomerService` en `services/customer_service.py`.
+  - Columna `sales.customer_id` (ahora inerte — el backend ya no la escribe ni la lee para lógica nueva).
+  - Los endpoints `/store/customers/*` son ahora alias sobre `MemberService`, no sobre `CustomerService`.
+- **Riesgo:** La coexistencia genera confusión: `Sale` tiene dos columnas de FK (`member_id` canónica + `customer_id` legado), y `Customer`/`CustomerService` existen aunque no se usen en ningún flujo activo. Un desarrollador podría editar `CustomerService` creyendo que sigue activo.
+- **Impacto:** Bajo en runtime. El frontend no necesita cambios (semantic reuse: `SaleCreate.customer_id` contiene un `member_id`, el backend lo mapea internamente). Riesgo medio de confusión para mantenimiento futuro.
+- **Módulos afectados:** `backend/gym.db` (tabla `customers`), `models/customer.py`, `services/customer_service.py`, `sales.customer_id` (columna inerte).
+- **Prioridad:** Baja.
+- **Fase de limpieza:** Cliente Único Phase 2 — una vez el frontend deje de enviar `customer_id` y use `member_id` directamente, eliminar: tabla `customers`, `Customer`, `CustomerService`, columna `sales.customer_id`.
+- **Why:** Se optó por diferir la limpieza para evitar regresiones en el frontend sin coordinación de deploy.
+- **How to apply:** No modificar `CustomerService` ni la tabla `customers` — son artefactos congelados. Toda la lógica activa de ventas y clientes pasa por `MemberService` y `Sale.member_id`.
+
+---
+
+## TD-51 — Validación de actualización de producción para Cliente Único Phase 1
+
+- **ID:** TD-51
+- **Título:** El despliegue de Cliente Único Phase 1 en la instalación productiva del gimnasio no ha sido validado sobre los datos reales.
+- **Descripción:** Cliente Único Phase 1 fue validada en el entorno de desarrollo (base de datos de desarrollo, 0 ventas, 0 clientes en `customers`). La instalación productiva puede tener un estado diferente. Antes del deploy en producción se deben ejecutar las validaciones V1–V4 definidas en el Paso 5.5 y verificar que no hay clientes solo-tienda con ventas asociadas (riesgo de pérdida de atribución).
+- **Riesgo:** Alto si se despliega sin auditoría previa y existen ventas con `customer_id` de clientes sin `member_id`.
+- **Impacto:** Ventas de clientes solo-tienda quedarían sin atribución (`customer_name=null`) en cartera y reportes post-deploy.
+- **Módulos afectados:** `_migrate_sales_to_member_id()` en `init_db.py`, tabla `sales`, tabla `customers`.
+- **Prioridad:** Alta — bloquea el deploy en producción.
+- **Checklist pre-deploy (Paso 5.5):**
+  1. `SELECT COUNT(*) FROM sales WHERE customer_id IS NOT NULL AND member_id IS NULL` — cantidad a migrar.
+  2. `SELECT COUNT(*) FROM customers WHERE member_id IS NULL` — clientes solo-tienda (si > 0, evaluar impacto).
+  3. `SELECT COUNT(*) FROM sales WHERE status='CANCELLED' AND ...` — ventas a purgar.
+  4. Backup manual previo al rebuild.
+  5. Rebuild + recreate + verificar logs de startup.
+  6. Validar cartera, clientes y dashboard post-deploy.
+- **Recomendación:** Ejecutar `/paso5.5` sobre la instalación productiva antes de hacer `docker compose build backend` en producción.
+
+---
+
+## TD-50 — `POST /store/sales` acepta member_id inexistente (SQLite FK=0, sin validación explícita)
+
+- **ID:** TD-50
+- **Título:** La ruta `POST /store/sales` no valida que `customer_id` (semánticamente: `member_id`) refiera a un `Member` existente.
+- **Descripción:** `SaleService.create_sale()` almacena `data.customer_id` en `Sale.member_id` sin consultar `MemberRepository.get_by_id()`. SQLite tiene `PRAGMA foreign_keys = 0` (OFF por defecto), por lo que la FK `sales.member_id → members.id` no se valida a nivel de BD. Resultado: una venta puede crearse con un `member_id` arbitrario inexistente. La venta aparecerá con `customer_name=null` en cartera y reportes.
+- **Nota:** Este gap es **pre-existente** — el mismo escenario ocurría con `customer_id` antes de Cliente Único. `PRAGMA foreign_keys = 0` es el estado de toda la BD, no introducido por esta migración. Detectado durante Paso 5 — Cliente Único Phase 1.
+- **Riesgo:** Bajo. En uso normal, el frontend siempre selecciona el cliente desde el listado de Members (que devuelve IDs reales). Solo explotable via API directa.
+- **Impacto:** Ventas huérfanas con `customer_name=null`; visibles en cartera. Si la venta es PAID/PENDING no se purgan automáticamente.
+- **Módulos afectados:** `backend/app/services/sale_service.py` (`create_sale`), `backend/app/database/session.py` (no activa FK pragma).
+- **Prioridad:** Baja.
+- **Recomendación futura:** Añadir en `create_sale`: `if data.customer_id and not MemberRepository.get_by_id(data.customer_id): raise ValueError("Cliente no encontrado.")`. O activar `PRAGMA foreign_keys = ON` en el event listener del engine de SQLAlchemy.
+
+---
+
+## TD-49 — `CreditPayment` definido en `customer.py` — dependencia cruzada con `member_repository.py`
+
+- **ID:** TD-49
+- **Título:** Modelo `CreditPayment` reside en `models/customer.py` pero es importado por `member_repository.py`.
+- **Descripción:** `CreditPayment` es un modelo de dominio de ventas (abonos a crédito). Está definido en `models/customer.py` junto con `Customer`. Tras Cliente Único Phase 1, `member_repository.py` importa `CreditPayment` desde `customer.py` para calcular la deuda total de un miembro (`get_debt_total`). Esto crea un acoplamiento cruzado entre el módulo `member` y el módulo `customer`.
+- **Riesgo:** Si `customer.py` se elimina en Phase 2, `member_repository.py` rompe en import. El desarrollador que limpie `customer.py` debe recordar mover `CreditPayment` primero.
+- **Impacto:** Bajo en runtime. Solo riesgo de ruptura en limpieza de Phase 2 si no se coordina el orden de cambios.
+- **Módulos afectados:** `backend/app/models/customer.py` (define `CreditPayment`), `backend/app/repositories/member_repository.py` (importa `CreditPayment`).
+- **Prioridad:** Baja.
+- **Recomendación futura:** En Phase 2, antes de eliminar `customer.py`, mover `CreditPayment` a `models/credit_payment.py` y actualizar todos los imports (`member_repository.py`, `sale_repository.py`, `init_db.py`).

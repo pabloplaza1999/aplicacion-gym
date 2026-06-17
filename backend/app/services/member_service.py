@@ -1,6 +1,6 @@
 """Member service for business logic."""
 
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy.orm import Session
 
@@ -121,5 +121,38 @@ class MemberService:
         return MemberRead.from_orm(member)
 
     def hard_delete_member(self, member_id: int) -> bool:
-        """Permanently delete a member and all related data."""
+        """Permanently delete a member and all related data.
+
+        Raises:
+            ValueError: If the member has active store sales (PAID/PENDING/PARTIAL).
+        """
+        if self.repository.has_active_sales(member_id):
+            raise ValueError("No se puede eliminar un cliente con ventas activas (PAID, PENDING o PARTIAL).")
         return self.repository.hard_delete(member_id)
+
+    def get_members_for_store(
+        self,
+        q: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> List[MemberRead]:
+        """List/search members for the store customer selector."""
+        if q:
+            members = self.repository.search_for_store(q, skip=skip, limit=limit)
+        else:
+            members = self.repository.get_all(skip=skip, limit=limit)
+        return [MemberRead.from_orm(m) for m in members]
+
+    def delete_customer_from_store(self, member_id: int) -> None:
+        """Delete a member via the store tab.
+
+        Raises:
+            ValueError: If the member has active sales or gym memberships.
+        """
+        if not self.repository.get_by_id(member_id):
+            raise ValueError("Cliente no encontrado.")
+        if self.repository.has_active_sales(member_id):
+            raise ValueError("No se puede eliminar un cliente con ventas activas (PAID, PENDING o PARTIAL).")
+        if self.repository.has_memberships(member_id):
+            raise ValueError("Este cliente tiene membresías del gimnasio. Elimínelo desde el módulo Clientes.")
+        self.repository.hard_delete(member_id)

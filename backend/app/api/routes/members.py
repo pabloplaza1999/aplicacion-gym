@@ -104,7 +104,10 @@ def delete_member(
         member = service.get_member(member_id)
         if not member:
             raise HTTPException(status_code=404, detail="Miembro no encontrado")
-        success = service.hard_delete_member(member_id)
+        try:
+            success = service.hard_delete_member(member_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         if not success:
             raise HTTPException(status_code=500, detail="Error al eliminar el miembro")
         return member

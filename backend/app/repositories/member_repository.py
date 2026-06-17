@@ -168,3 +168,48 @@ class MemberRepository:
         self.db.delete(member)
         self.db.commit()
         return True
+
+    def has_active_sales(self, member_id: int) -> bool:
+        from app.models.sale import Sale
+        return (
+            self.db.query(Sale)
+            .filter(Sale.member_id == member_id, Sale.status.in_(['PAID', 'PENDING', 'PARTIAL']))
+            .first()
+        ) is not None
+
+    def get_debt_total(self, member_id: int) -> float:
+        from sqlalchemy import func
+        from app.models.sale import Sale
+        from app.models.customer import CreditPayment
+        statuses = ['PENDING', 'PARTIAL']
+        total_sales = (
+            self.db.query(func.coalesce(func.sum(Sale.total), 0.0))
+            .filter(Sale.member_id == member_id, Sale.status.in_(statuses))
+            .scalar() or 0.0
+        )
+        total_paid = (
+            self.db.query(func.coalesce(func.sum(CreditPayment.amount), 0.0))
+            .join(Sale, CreditPayment.sale_id == Sale.id)
+            .filter(Sale.member_id == member_id, Sale.status.in_(statuses))
+            .scalar() or 0.0
+        )
+        return round(float(total_sales) - float(total_paid), 2)
+
+    def search_for_store(self, q: str, skip: int = 0, limit: int = 50) -> list[Member]:
+        """Search by name, phone, or document — used by store customer alias."""
+        pattern = f"%{q}%"
+        return (
+            self.db.query(Member)
+            .filter(
+                Member.full_name.ilike(pattern)
+                | Member.phone.ilike(pattern)
+                | Member.document.ilike(pattern)
+            )
+            .offset(skip).limit(limit).all()
+        )
+
+    def has_memberships(self, member_id: int) -> bool:
+        from app.models.membership import Membership
+        return (
+            self.db.query(Membership).filter(Membership.member_id == member_id).first()
+        ) is not None

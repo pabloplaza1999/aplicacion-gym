@@ -304,8 +304,27 @@ POST /api/notifications/run — ejecuta ciclo manualmente
 
 **Estado de despliegue:** ⏳ Pendiente de rebuild + recreate en los entornos de producción actuales (los contenedores en marcha siguen en las imágenes previas — root, bind `0.0.0.0`). Es actividad operativa de release, no deuda técnica.
 
+🔧 cliente-unico **Cliente Único — Fase 1 (backend).** Unifica las entidades `Customer` (tienda) y `Member` (gimnasio) en un único cliente canónico. `Sales.member_id` reemplaza `Sales.customer_id` como columna canónica. `/store/customers/*` redirige a `MemberService` (alias sin cambios de frontend). `SaleCreate.customer_id` se reutiliza semánticamente como `member_id` — cero cambios de frontend ni de contrato API. `_enrich_sale()` mapea `sale.member_id → SaleRead.customer_id` para retrocompatibilidad. `_migrate_historical_customer_ids()` eliminado del startup (creaba Customers desde Members, revirtiendo la migración). `_purge_orphaned_cancelled_sales()` actualizado para validar contra `members` y `customers` (modelo dual transitorio). `MemberService.hard_delete_member()` ahora bloquea si el cliente tiene ventas activas (PAID/PENDING/PARTIAL). Nuevo `DELETE /store/customers/{id}` bloquea además si el cliente tiene membresías del gimnasio. Tabla `customers` y servicio `CustomerService` se mantienen temporalmente (TD-48). Migración idempotente `_add_column_if_missing("sales", "member_id", ...)` + `_migrate_sales_to_member_id()` en startup. Frontend diferido a Fase 2.
+
+### Archivos modificados (cliente-unico)
+| Archivo | Cambio |
+|---|---|
+| `backend/app/models/sale.py` | Columna `member_id` FK→members añadida |
+| `backend/app/database/init_db.py` | `_migrate_sales_to_member_id()` + `_purge_orphaned_cancelled_sales()` actualizado + `_migrate_historical_customer_ids()` eliminado del startup |
+| `backend/app/repositories/sale_repository.py` | `member_id` canónico en todo el módulo; `get_member_name()`, `get_top_debtors()` con Member |
+| `backend/app/services/sale_service.py` | `_enrich_sale` mapea `member_id→customer_id`; `CustomerRepository` eliminado |
+| `backend/app/repositories/member_repository.py` | Nuevos: `has_active_sales()`, `get_debt_total()`, `search_for_store()`, `has_memberships()` |
+| `backend/app/services/member_service.py` | `hard_delete_member()` con guard; `get_members_for_store()`, `delete_customer_from_store()` |
+| `backend/app/api/routes/store.py` | `/customers/*` → alias MemberService con `_member_as_customer()` helper |
+| `backend/app/api/routes/members.py` | `DELETE /{id}?hard=true` atrapa `ValueError` → HTTP 400 |
+
 ## Próximo paso
-Paso 5 — pruebas F1 Bloque A: validar instalación nueva y upgrade sobre volumen existente (escritura `gym.db`, backups auto/manual, usuario efectivo del proceso = `gymuser`).
-F1 Bloque B (P2): SEC-010/012/015/017 + SEC-008 (deps). → F2 auth staff.
-Notificaciones Fase 3: canales adicionales (WhatsApp/SMS) o plantillas personalizables.
-Tienda Fase D: exportación de reportes o mejoras operativas.
+
+### Actividades operativas pendientes (no son deuda de código)
+- **Deploy producción — Cliente Único Phase 1** (TD-51, Alta): ejecutar checklist Paso 5.5 sobre la instalación real del gimnasio antes de hacer `docker compose build backend`. Verificar V1–V4 sobre datos reales de `customers`, `sales` y `members`.
+
+### Backlog funcional
+- **F1 Bloque B (P2):** SEC-010/012/015/017 + SEC-008 (deps). → F2 auth staff.
+- **Notificaciones Fase 3:** canales adicionales (WhatsApp/SMS) o plantillas personalizables.
+- **Tienda Fase D:** exportación de reportes o mejoras operativas.
+- **Cliente Único Phase 2:** actualizar frontend para usar `member_id` directamente; eliminar tabla `customers`, `CustomerService` y columna `sales.customer_id` (prerrequisito: mover `CreditPayment` a su propio módulo — TD-49).

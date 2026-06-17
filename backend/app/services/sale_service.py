@@ -1,4 +1,4 @@
-"""Sale business logic — Fase B: customer_id, PaymentType, SaleStatus."""
+"""Sale business logic — Cliente Único: member_id es la columna canónica."""
 
 from typing import List, Optional
 from datetime import datetime
@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.repositories.product_repository import ProductRepository
 from app.repositories.inventory_repository import InventoryRepository
 from app.repositories.sale_repository import SaleRepository
-from app.repositories.customer_repository import CustomerRepository
 from app.repositories.credit_payment_repository import CreditPaymentRepository
 from app.schemas.sale import (
     SaleCreate, SaleRead, SaleItemRead, SaleListResponse,
@@ -30,13 +29,14 @@ class SaleService:
         self.product_repo = ProductRepository(db)
         self.inventory_repo = InventoryRepository(db)
         self.sale_repo = SaleRepository(db)
-        self.customer_repo = CustomerRepository(db)
         self.cp_repo = CreditPaymentRepository(db)
         self.db = db
 
     def _enrich_sale(self, sale) -> dict:
         items = self.sale_repo.get_items_by_sale(sale.id)
-        customer_name = self.sale_repo.get_customer_name(sale.customer_id) if sale.customer_id else None
+        # Cliente Único: member_id is canonical; exposed as customer_id for frontend compat
+        effective_member_id = sale.member_id
+        customer_name = self.sale_repo.get_member_name(effective_member_id) if effective_member_id else None
         amount_paid = self.cp_repo.sum_by_sale(sale.id)
         balance = round(sale.total - amount_paid, 2) if sale.status in ('PENDING', 'PARTIAL') else 0.0
         enriched_items = [
@@ -52,7 +52,7 @@ class SaleService:
         ]
         return {
             "id": sale.id,
-            "customer_id": sale.customer_id,
+            "customer_id": effective_member_id,
             "customer_name": customer_name,
             "sale_date": sale.sale_date,
             "subtotal": sale.subtotal,
@@ -93,8 +93,9 @@ class SaleService:
         total = round(max(0.0, subtotal - discount), 2)
         status = "PENDING" if data.payment_type == "credit" else "PAID"
 
+        # SaleCreate.customer_id contains a member_id (semantic reuse — zero frontend change)
         sale = self.sale_repo.create_sale(
-            customer_id=data.customer_id,
+            member_id=data.customer_id,
             payment_type=data.payment_type,
             subtotal=subtotal,
             discount=discount,

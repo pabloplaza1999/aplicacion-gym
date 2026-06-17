@@ -6,16 +6,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
+from app.models.member import Member
 from app.schemas.product import CategoryCreate, CategoryUpdate, CategoryRead, ProductCreate, ProductUpdate, ProductRead
 from app.schemas.inventory import InventoryEntryCreate, InventoryAdjustmentCreate, InventoryMovementRead
 from app.schemas.sale import SaleCreate, SaleRead, SaleListResponse, CarteraResponse, StoreReportResponse
 from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerRead
+from app.schemas.member import MemberCreate, MemberUpdate
 from app.schemas.credit_payment import CreditPaymentCreate, CreditPaymentRead
 from app.services.product_service import ProductService
 from app.services.inventory_service import InventoryService
 from app.services.sale_service import SaleService, InsufficientStockError, CannotCancelPartialSaleError
-from app.services.customer_service import CustomerService
+from app.services.member_service import MemberService, DuplicateDocumentError
 from app.services.credit_payment_service import CreditPaymentService, CannotPayCancelledSaleError, ExceedsBalanceError
+from app.repositories.member_repository import MemberRepository
 
 router = APIRouter(prefix="/store", tags=["store"])
 
@@ -162,7 +165,23 @@ def get_low_stock(db: Session = Depends(get_db)):
     return InventoryService(db).get_low_stock_products()
 
 
-# ── Customers ─────────────────────────────────────────────────────────────────
+# ── Customers → Member aliases ────────────────────────────────────────────────
+
+def _member_as_customer(member, debt_total: float = 0.0) -> CustomerRead:
+    """Map a Member ORM or MemberRead to CustomerRead for backward-compatible store responses."""
+    return CustomerRead(
+        id=member.id,
+        name=member.full_name,
+        document=member.document,
+        phone=member.phone,
+        email=member.email,
+        notes=member.notes,
+        member_id=member.id,
+        member_name=member.full_name,
+        debt_total=debt_total,
+        created_at=member.registration_date,
+    )
+
 
 @router.get("/customers", response_model=list[CustomerRead])
 def get_customers(
@@ -171,48 +190,73 @@ def get_customers(
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db),
 ):
-    svc = CustomerService(db)
-    if q:
-        return svc.search_customers(q, skip=skip, limit=limit)
-    return svc.get_customers(skip=skip, limit=limit)
+    members = MemberService(db).get_members_for_store(q=q, skip=skip, limit=limit)
+    repo = MemberRepository(db)
+    return [_member_as_customer(m, repo.get_debt_total(m.id)) for m in members]
 
 
 @router.post("/customers", response_model=CustomerRead, status_code=201)
 def create_customer(data: CustomerCreate, db: Session = Depends(get_db)):
+    if not data.phone:
+        raise HTTPException(400, detail="El teléfono es obligatorio para crear un cliente.")
+    svc = MemberService(db)
+    repo = MemberRepository(db)
     try:
-        return CustomerService(db).create_customer(data)
+        member_read = svc.create_member(MemberCreate(
+            full_name=data.name,
+            phone=data.phone,
+            document=data.document,
+            email=data.email,
+            notes=data.notes,
+        ))
+    except DuplicateDocumentError:
+        raise HTTPException(409, detail="Ya existe un cliente con ese número de documento.")
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
+    return _member_as_customer(member_read, repo.get_debt_total(member_read.id))
 
 
-@router.post("/customers/from-member/{member_id}", response_model=CustomerRead, status_code=201)
+@router.post("/customers/from-member/{member_id}", response_model=CustomerRead, status_code=200)
 def customer_from_member(member_id: int, db: Session = Depends(get_db)):
-    try:
-        return CustomerService(db).get_or_create_from_member(member_id)
-    except ValueError as e:
-        raise HTTPException(404, detail=str(e))
+    """Alias kept for backward compat — returns the member directly as CustomerRead."""
+    member = db.query(Member).filter(Member.id == member_id).first()
+    if not member:
+        raise HTTPException(404, detail="Miembro no encontrado.")
+    repo = MemberRepository(db)
+    return _member_as_customer(member, repo.get_debt_total(member.id))
 
 
 @router.get("/customers/{customer_id}", response_model=CustomerRead)
 def get_customer(customer_id: int, db: Session = Depends(get_db)):
-    try:
-        return CustomerService(db).get_customer(customer_id)
-    except ValueError as e:
-        raise HTTPException(404, detail=str(e))
+    member = db.query(Member).filter(Member.id == customer_id).first()
+    if not member:
+        raise HTTPException(404, detail="Cliente no encontrado.")
+    repo = MemberRepository(db)
+    return _member_as_customer(member, repo.get_debt_total(member.id))
 
 
 @router.put("/customers/{customer_id}", response_model=CustomerRead)
 def update_customer(customer_id: int, data: CustomerUpdate, db: Session = Depends(get_db)):
-    try:
-        return CustomerService(db).update_customer(customer_id, data)
-    except ValueError as e:
-        raise HTTPException(400, detail=str(e))
+    svc = MemberService(db)
+    repo = MemberRepository(db)
+    update_data = MemberUpdate(
+        full_name=data.name,
+        phone=data.phone,
+        document=data.document,
+        email=data.email,
+        notes=data.notes,
+    )
+    result = svc.update_member(customer_id, update_data)
+    if not result:
+        raise HTTPException(404, detail="Cliente no encontrado.")
+    member = db.query(Member).filter(Member.id == customer_id).first()
+    return _member_as_customer(member, repo.get_debt_total(member.id))
 
 
 @router.delete("/customers/{customer_id}", status_code=204)
 def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     try:
-        CustomerService(db).delete_customer(customer_id)
+        MemberService(db).delete_customer_from_store(customer_id)
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
 

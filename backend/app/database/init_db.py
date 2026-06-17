@@ -89,83 +89,69 @@ def _migrate_attendance_unique_constraint() -> None:
     print("[OK] Migración: attendances UNIQUE constraint migrada a (membership_id, check_in_date)")
 
 
-def _migrate_historical_customer_ids() -> None:
-    """Create Customer records for existing sales with legacy member_id, link via customer_id."""
-    from app.models.member import Member
-    db = SessionLocal()
-    try:
-        rows = db.execute(text(
-            "SELECT DISTINCT member_id FROM sales WHERE member_id IS NOT NULL AND customer_id IS NULL"
-        )).fetchall()
-        if not rows:
+def _migrate_sales_to_member_id() -> None:
+    """Idempotent: backfill sales.member_id from customers.member_id for linked customers.
+
+    For pre-Cliente-Único sales (customer_id set, member_id NULL):
+    - Linked customer (customer.member_id IS NOT NULL) → copy member_id to the sale.
+    - Store-only customer (customer.member_id IS NULL) → sale.member_id remains NULL.
+    Rows already migrated (member_id IS NOT NULL) are skipped.
+    """
+    with engine.begin() as conn:
+        count = conn.execute(text(
+            "SELECT COUNT(*) FROM sales WHERE customer_id IS NOT NULL AND member_id IS NULL"
+        )).scalar()
+        if not count:
             return
-        count_cust = 0
-        count_links = 0
-        for (member_id,) in rows:
-            member = db.query(Member).filter(Member.id == member_id).first()
-            if not member:
-                continue
-            customer = db.query(Customer).filter(Customer.member_id == member_id).first()
-            if not customer:
-                customer = Customer(
-                    name=member.full_name,
-                    document=member.document,
-                    phone=member.phone,
-                    member_id=member_id,
-                )
-                db.add(customer)
-                db.flush()
-                count_cust += 1
-            db.execute(text(
-                "UPDATE sales SET customer_id = :cid WHERE member_id = :mid AND customer_id IS NULL"
-            ), {"cid": customer.id, "mid": member_id})
-            count_links += 1
-        db.commit()
-        if count_cust or count_links:
-            print(f"[OK] Migración histórica: {count_cust} customers creados, {count_links} miembros vinculados en ventas")
-    except Exception as e:
-        db.rollback()
-        print(f"[WARN] Migración histórica customer_id omitida: {e}")
-    finally:
-        db.close()
+        conn.execute(text("""
+            UPDATE sales
+            SET member_id = (
+                SELECT c.member_id FROM customers c WHERE c.id = sales.customer_id
+            )
+            WHERE customer_id IS NOT NULL AND member_id IS NULL
+        """))
+        migrated = conn.execute(text(
+            "SELECT COUNT(*) FROM sales WHERE customer_id IS NOT NULL AND member_id IS NOT NULL"
+        )).scalar()
+        print(f"[OK] Cliente Único: {migrated}/{count} ventas migradas a member_id")
 
 
 def _purge_orphaned_cancelled_sales() -> None:
-    """Delete CANCELLED sales whose customer no longer exists, plus their dependent records."""
+    """Delete CANCELLED sales whose owner no longer exists, plus dependent records.
+
+    Handles both models:
+    - New (member_id set): orphan if member was deleted.
+    - Legacy (customer_id set, no member_id): orphan if customer was deleted.
+    - Anonymous (both NULL): always purge.
+    """
     with engine.begin() as conn:
+        orphan_condition = (
+            "status = 'CANCELLED' AND ("
+            "  (member_id IS NOT NULL AND member_id NOT IN (SELECT id FROM members))"
+            "  OR (member_id IS NULL AND customer_id IS NOT NULL"
+            "      AND customer_id NOT IN (SELECT id FROM customers))"
+            "  OR (member_id IS NULL AND customer_id IS NULL)"
+            ")"
+        )
         count = conn.execute(text(
-            "SELECT COUNT(*) FROM sales "
-            "WHERE status = 'CANCELLED' "
-            "AND (customer_id IS NULL "
-            "     OR customer_id NOT IN (SELECT id FROM customers))"
+            f"SELECT COUNT(*) FROM sales WHERE {orphan_condition}"
         )).scalar()
         if not count:
             return
         # TD-21: credit_payments must be deleted before sales to avoid orphaned records
         conn.execute(text(
-            "DELETE FROM credit_payments WHERE sale_id IN ("
-            "  SELECT id FROM sales WHERE status = 'CANCELLED' "
-            "  AND (customer_id IS NULL "
-            "       OR customer_id NOT IN (SELECT id FROM customers)))"
+            f"DELETE FROM credit_payments WHERE sale_id IN "
+            f"(SELECT id FROM sales WHERE {orphan_condition})"
         ))
         conn.execute(text(
-            "DELETE FROM inventory_movements WHERE sale_id IN ("
-            "  SELECT id FROM sales WHERE status = 'CANCELLED' "
-            "  AND (customer_id IS NULL "
-            "       OR customer_id NOT IN (SELECT id FROM customers)))"
+            f"DELETE FROM inventory_movements WHERE sale_id IN "
+            f"(SELECT id FROM sales WHERE {orphan_condition})"
         ))
         conn.execute(text(
-            "DELETE FROM sale_items WHERE sale_id IN ("
-            "  SELECT id FROM sales WHERE status = 'CANCELLED' "
-            "  AND (customer_id IS NULL "
-            "       OR customer_id NOT IN (SELECT id FROM customers)))"
+            f"DELETE FROM sale_items WHERE sale_id IN "
+            f"(SELECT id FROM sales WHERE {orphan_condition})"
         ))
-        conn.execute(text(
-            "DELETE FROM sales "
-            "WHERE status = 'CANCELLED' "
-            "AND (customer_id IS NULL "
-            "     OR customer_id NOT IN (SELECT id FROM customers))"
-        ))
+        conn.execute(text(f"DELETE FROM sales WHERE {orphan_condition}"))
         print(f"[OK] Purga: {count} ventas anuladas sin cliente válido eliminadas")
 
 
@@ -305,6 +291,9 @@ def _run_migrations() -> None:
     _add_column_if_missing("sales", "customer_id", "customer_id INTEGER")
     _add_column_if_missing("sales", "payment_type", "payment_type VARCHAR(10) NOT NULL DEFAULT 'cash'")
     _migrate_sale_status()
+    # Cliente Único — member_id must be added before purge so orphan logic can reference it
+    _add_column_if_missing("sales", "member_id", "member_id INTEGER")
+    _migrate_sales_to_member_id()
     _purge_orphaned_cancelled_sales()
     # Fase C — attendances constraint fix
     _migrate_attendance_unique_constraint()
@@ -346,7 +335,8 @@ def init_db() -> None:
     """Initialize database with tables and seed data."""
     Base.metadata.create_all(bind=engine)
     _run_migrations()
-    _migrate_historical_customer_ids()
+    # NOTE: _migrate_historical_customer_ids() removed — Cliente Único uses member_id directly.
+    # That function created Customer rows from Member data, which would reverse the migration.
 
     db = SessionLocal()
     try:

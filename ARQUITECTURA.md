@@ -48,6 +48,19 @@ Dedup Customer por document en CustomerService.create_customer / update_customer
 KPIs cartera (total_balance, sale_count, customer_count) en SaleRepository.get_cartera_kpis() — queries SQL agregadas, no iteración Python.
 Rutas estáticas antes que dinámicas: POST /customers/from-member/{id} declarada antes de GET /customers/{id}.
 
+## Cliente Único Phase 1 — Member como entidad canónica de ventas
+Member es ahora la entidad canónica de clientes para toda la lógica de ventas (phase 1, backend-only).
+sales.member_id (FK → members.id) reemplaza a sales.customer_id como columna activa del ORM.
+_enrich_sale(): lee sale.member_id → devuelve customer_id=member_id (semantic reuse para retrocompatibilidad de frontend).
+SaleCreate.customer_id contiene semánticamente un member_id — cero cambios de contrato API ni de frontend (diferido a Phase 2).
+/store/customers/* son alias sobre MemberService + _member_as_customer() helper; CustomerService inactivo en este módulo.
+MemberRepository ampliado: has_active_sales(), get_debt_total(), search_for_store(), has_memberships().
+MemberService ampliado: get_members_for_store(), delete_customer_from_store(), hard_delete_member() con guard de ventas activas.
+Purge dual-modelo: _purge_orphaned_cancelled_sales() valida contra members (new) y customers (legacy) según qué FK está set.
+Tabla customers + CustomerService conservados transitoriamente (TD-48). CreditPayment sigue en customer.py (TD-49).
+Migración idempotente en startup: _add_column_if_missing("sales","member_id") + _migrate_sales_to_member_id().
+_migrate_historical_customer_ids() eliminado del startup — creaba Customer rows desde Members, revirtiendo la migración.
+
 ## Tienda Fase C — Reportes operativos
 Endpoint único GET /store/reports (evita múltiples llamadas desde el frontend).
 Tres bloques en un solo response: sales (SalesKPI + top_products), cartera (CarteraReport), inventory (InventoryReport).

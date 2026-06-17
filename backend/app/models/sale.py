@@ -12,6 +12,7 @@ class Sale(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    member_id = Column(Integer, ForeignKey("members.id"), nullable=True, index=True)
     sale_date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     subtotal = Column(Float, nullable=False)
     discount = Column(Float, default=0.0, nullable=False)

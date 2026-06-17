@@ -1,4 +1,4 @@
-"""Sale and sale item repository — Fase B: customer_id, SaleStatus."""
+"""Sale and sale item repository — Cliente Único: member_id es la columna canónica."""
 
 from datetime import datetime
 from typing import Optional, List
@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 
 from app.models.sale import Sale, SaleItem
-from app.models.customer import Customer, CreditPayment
+from app.models.member import Member
+from app.models.customer import CreditPayment
 from app.models.inventory import InventoryMovement
 from app.models.product import Product
 
@@ -18,7 +19,7 @@ class SaleRepository:
 
     def create_sale(
         self,
-        customer_id: Optional[int],
+        member_id: Optional[int],
         payment_type: str,
         subtotal: float,
         discount: float,
@@ -27,7 +28,7 @@ class SaleRepository:
         status: str,
     ) -> Sale:
         sale = Sale(
-            customer_id=customer_id,
+            member_id=member_id,
             payment_type=payment_type,
             subtotal=subtotal,
             discount=discount,
@@ -70,7 +71,8 @@ class SaleRepository:
     ) -> List[Sale]:
         q = self.db.query(Sale)
         if customer_id:
-            q = q.filter(Sale.customer_id == customer_id)
+            # customer_id from the API is semantically a member_id (Cliente Único)
+            q = q.filter(Sale.member_id == customer_id)
         if status:
             q = q.filter(Sale.status == status)
         if from_date:
@@ -88,7 +90,7 @@ class SaleRepository:
     ) -> int:
         q = self.db.query(Sale)
         if customer_id:
-            q = q.filter(Sale.customer_id == customer_id)
+            q = q.filter(Sale.member_id == customer_id)
         if status:
             q = q.filter(Sale.status == status)
         if from_date:
@@ -168,26 +170,30 @@ class SaleRepository:
         self.db.delete(sale)
 
     def purge_orphaned_cancelled(self) -> int:
-        """Delete CANCELLED sales with no valid customer (null or deleted customer_id).
+        """Delete CANCELLED sales with no valid owner.
 
-        Covers two cases:
-          1. customer_id IS NULL (anonymous sales that were cancelled)
-          2. customer_id references a customer row that no longer exists (deleted customer)
-        Returns the count of deleted sales.
+        New model (member_id set): purge if the member was deleted.
+        Legacy (customer_id set, no member_id): purge if the customer was deleted.
+        Anonymous (both NULL): always purge.
         """
-        valid_ids = {r[0] for r in self.db.query(Customer.id).all()}
-        sales = (
-            self.db.query(Sale)
-            .filter(Sale.status == 'CANCELLED')
-            .filter(
-                Sale.customer_id.is_(None) |
-                (~Sale.customer_id.in_(valid_ids) if valid_ids else Sale.customer_id.isnot(None))
-            )
-            .all()
-        )
-        for sale in sales:
+        from app.models.customer import Customer
+        valid_member_ids = {r[0] for r in self.db.query(Member.id).all()}
+        valid_customer_ids = {r[0] for r in self.db.query(Customer.id).all()}
+
+        to_purge = []
+        for sale in self.db.query(Sale).filter(Sale.status == 'CANCELLED').all():
+            if sale.member_id is not None:
+                if sale.member_id not in valid_member_ids:
+                    to_purge.append(sale)
+            elif sale.customer_id is not None:
+                if sale.customer_id not in valid_customer_ids:
+                    to_purge.append(sale)
+            else:
+                to_purge.append(sale)
+
+        for sale in to_purge:
             self.delete_sale_cascade(sale)
-        return len(sales)
+        return len(to_purge)
 
     def get_cartera(
         self,
@@ -207,8 +213,8 @@ class SaleRepository:
         statuses = ['PENDING', 'PARTIAL']
         sale_count = self.db.query(Sale).filter(Sale.status.in_(statuses)).count()
         customer_count = (
-            self.db.query(func.count(func.distinct(Sale.customer_id)))
-            .filter(Sale.status.in_(statuses), Sale.customer_id.isnot(None))
+            self.db.query(func.count(func.distinct(Sale.member_id)))
+            .filter(Sale.status.in_(statuses), Sale.member_id.isnot(None))
             .scalar() or 0
         )
         total_sale_amt = (
@@ -228,9 +234,9 @@ class SaleRepository:
             "customer_count": customer_count,
         }
 
-    def get_customer_name(self, customer_id: int) -> Optional[str]:
-        c = self.db.query(Customer).filter(Customer.id == customer_id).first()
-        return c.name if c else None
+    def get_member_name(self, member_id: int) -> Optional[str]:
+        m = self.db.query(Member).filter(Member.id == member_id).first()
+        return m.full_name if m else None
 
     def get_product_name(self, product_id: int) -> Optional[str]:
         p = self.db.query(Product).filter(Product.id == product_id).first()
@@ -282,32 +288,31 @@ class SaleRepository:
         return round(float(result or 0.0), 2)
 
     def get_top_debtors(self, limit: int = 5) -> list:
-        """Top customers by outstanding balance, ordered DESC.
+        """Top members by outstanding balance, ordered DESC.
 
-        Returns list of (customer_id, customer_name, outstanding_balance, oldest_sale_date).
-        Reuses PENDING/PARTIAL logic consistent with get_cartera_kpis().
+        Returns (member_id, member_name, outstanding_balance, oldest_sale_date).
+        Tuple positions are preserved for dashboard_service.py positional access.
         """
         statuses = ['PENDING', 'PARTIAL']
         outstanding_expr = (
             func.sum(Sale.total) - func.coalesce(func.sum(CreditPayment.amount), 0.0)
         )
-        rows = (
+        return (
             self.db.query(
-                Customer.id,
-                Customer.name,
+                Member.id,
+                Member.full_name,
                 outstanding_expr.label('outstanding'),
                 func.min(Sale.sale_date).label('oldest_sale_date'),
             )
-            .join(Sale, Sale.customer_id == Customer.id)
+            .join(Sale, Sale.member_id == Member.id)
             .outerjoin(CreditPayment, CreditPayment.sale_id == Sale.id)
-            .filter(Sale.status.in_(statuses), Sale.customer_id.isnot(None))
-            .group_by(Customer.id, Customer.name)
+            .filter(Sale.status.in_(statuses), Sale.member_id.isnot(None))
+            .group_by(Member.id, Member.full_name)
             .having(outstanding_expr > 0)
             .order_by(outstanding_expr.desc())
             .limit(limit)
             .all()
         )
-        return rows
 
     def get_cartera_kpis_for_report(self) -> dict:
         """Extends get_cartera_kpis() with per-status counts and oldest debt date."""
