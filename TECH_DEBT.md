@@ -378,6 +378,9 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-49 | `CreditPayment` definido en `customer.py`, importado por `member_repository.py` — acoplamiento cruzado | Baja |
 | TD-50 | `POST /store/sales` acepta `customer_id` (member_id) inexistente — SQLite FK=0, sin validación explícita | Baja |
 | TD-51 | Validación de actualización de producción para Cliente Único Phase 1 — pendiente auditoría sobre datos reales | Alta |
+| TD-52 | ~~`get_memberships_by_status` y `get_members_by_plan` en `dashboard_repository.py` usan `datetime.utcnow()` — StatCards y tabla "Membresías por plan" incorrectos después de las 19:00 Bogotá~~ | ✅ RESUELTO |
+| TD-53 | ~~`_enrich_membership` usa `datetime.utcnow()` para `days_remaining` — muestra días negativos desde las 19:00 Bogotá en el último día~~ | ✅ RESUELTO |
+| TD-54 | ~~`_has_active_valid_voucher` y `get_active_voucher_warning` usan `datetime.utcnow()` — valera considerada inválida 5h antes de expirar localmente~~ | ✅ RESUELTO |
 
 **Resueltos en fixes-post-tienda-b:**
 - `UNIQUE(member_id, check_in_date)` en attendances → migrada a `(membership_id, check_in_date)` ✅
@@ -646,16 +649,12 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 
 ---
 
-## TD-46 — `_calculate_status` compara `end_date` UTC contra `datetime.utcnow()`
+## TD-46 — `_calculate_status` compara `end_date` UTC contra `datetime.utcnow()` ✅ RESUELTO
 
 - **ID:** TD-46
-- **Estado:** Abierto.
-- **Descripción:** `MembershipService._calculate_status` compara `end_date` (almacenado como datetime UTC medianoche) contra `datetime.utcnow()`. En Bogotá (UTC-5), esto provoca que una membresía que vence el día X aparezca como `expired` desde las 19:00 del día X-1 hora local, es decir, ~5 horas antes del vencimiento real percibido por el operador.
-- **Riesgo:** El dashboard y el badge de estado muestran `Vencida` el último día de la membresía del cliente, generando falsa alarma operativa y potencialmente bloqueando renovaciones al operador antes de tiempo.
-- **Registros afectados:** Todos los clientes cuya membresía vence ese día. Con 50 clientes migrados, ocurre sistemáticamente en el último día de cada membresía.
-- **Módulos afectados:** `backend/app/services/membership_service.py` — método `_calculate_status`.
-- **Prioridad:** Media.
-- **Recomendación futura:** Reemplazar `datetime.utcnow()` por `datetime.utcnow() + BOGOTA_OFFSET` en la comparación. Alternativamente, almacenar `end_date` como medianoche hora Bogotá y comparar contra `datetime.utcnow() + BOGOTA_OFFSET`. Leer `config.BOGOTA_OFFSET` ya disponible en el proyecto.
+- **Estado:** Resuelto (2026-06-18).
+- **Solución aplicada:** `today = datetime.utcnow() + BOGOTA_OFFSET` en `_calculate_status`. `BOGOTA_OFFSET` ya estaba importado desde `app.core.config`. Cambio de 1 línea; sin impacto histórico (cálculo en memoria).
+- **Archivos modificados:** `backend/app/services/membership_service.py` — línea 66.
 
 ---
 
@@ -743,6 +742,45 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 - **Módulos afectados:** `backend/app/services/sale_service.py` (`create_sale`), `backend/app/database/session.py` (no activa FK pragma).
 - **Prioridad:** Baja.
 - **Recomendación futura:** Añadir en `create_sale`: `if data.customer_id and not MemberRepository.get_by_id(data.customer_id): raise ValueError("Cliente no encontrado.")`. O activar `PRAGMA foreign_keys = ON` en el event listener del engine de SQLAlchemy.
+
+---
+
+## TD-52 — Dashboard StatCards y tabla "Membresías por plan" usan `datetime.utcnow()` ✅ RESUELTO
+
+- **ID:** TD-52
+- **Estado:** Resuelto (2026-06-18). Corregido junto con TD-53 y TD-54 en una sola sesión de normalización de zona horaria.
+- **Descripción:** `get_memberships_by_status` (línea 72) y `get_members_by_plan` (línea 144) en `dashboard_repository.py` calculan `days_remaining = (end_date - now).days` usando `now = datetime.utcnow()`. Mismo patrón corregido en `_calculate_status` (TD-46). Después de las 19:00 Bogotá, membresías que vencen "hoy" aparecen en el bucket `expired` en vez de `active`/`expiring` en las StatCards y en la tabla "Membresías por plan".
+- **Riesgo:** Conteos del Dashboard inconsistentes con el badge de estado del cliente durante la ventana 19:00–00:00 Bogotá.
+- **Impacto:** Medio. Afecta la información ejecutiva del Dashboard.
+- **Módulos afectados:** `backend/app/repositories/dashboard_repository.py` — líneas 72 y 144.
+- **Prioridad:** Media.
+- **Solución futura:** Reemplazar `now = datetime.utcnow()` por `now = datetime.utcnow() + BOGOTA_OFFSET` en ambas funciones. `BOGOTA_OFFSET` ya está importado en el mismo archivo (línea 294 lo usa correctamente).
+
+---
+
+## TD-53 — `_enrich_membership` usa `datetime.utcnow()` para `days_remaining` ✅ RESUELTO
+
+- **ID:** TD-53
+- **Estado:** Resuelto (2026-06-18). Corregido junto con TD-52 y TD-54 en una sola sesión de normalización de zona horaria.
+- **Descripción:** `_enrich_membership` en `membership_service.py` (línea 124) calcula `days_remaining = max(0, (membership.end_date - today).days)` con `today = datetime.utcnow()`. En el último día de vigencia, después de las 19:00 Bogotá, `days_remaining` devuelve 0 (cortado por `max(0,…)`) aunque el badge muestre `expiring`. La inconsistencia es visual: el número de días no coincide con el estado mostrado.
+- **Riesgo:** El operador ve badge `expiring` pero `days_remaining = 0` en el detalle del cliente — puede generar confusión.
+- **Impacto:** Bajo. Solo afecta `current-membership` y listados de membresías.
+- **Módulos afectados:** `backend/app/services/membership_service.py` — línea 124.
+- **Prioridad:** Baja.
+- **Solución futura:** `today = datetime.utcnow() + BOGOTA_OFFSET` en `_enrich_membership`.
+
+---
+
+## TD-54 — `_has_active_valid_voucher` y `get_active_voucher_warning` usan `datetime.utcnow()` ✅ RESUELTO
+
+- **ID:** TD-54
+- **Estado:** Resuelto (2026-06-18). Corregido junto con TD-52 y TD-53 en una sola sesión de normalización de zona horaria.
+- **Descripción:** Ambos métodos en `membership_service.py` (líneas 151 y 170) comparan `membership.end_date < now` con `now = datetime.utcnow()`. Una valera que vence a medianoche UTC (= 19:00 Bogotá) es tratada como inválida 5 horas antes del vencimiento local. Consecuencia potencial: el sistema podría permitir vender una nueva valera a las 19:30 Bogotá aunque la vigente no haya expirado localmente.
+- **Riesgo:** Bajo. Las valeras son de uso diurno y el escenario exacto (compra de valera nueva después de las 19:00 Bogotá el día de vencimiento) es poco frecuente.
+- **Impacto:** Bajo.
+- **Módulos afectados:** `backend/app/services/membership_service.py` — líneas 151 y 170.
+- **Prioridad:** Baja.
+- **Solución futura:** Reemplazar `now = datetime.utcnow()` por `now = datetime.utcnow() + BOGOTA_OFFSET` en ambos métodos. Resolver junto con TD-52 y TD-53 en una sola sesión.
 
 ---
 

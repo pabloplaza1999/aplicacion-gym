@@ -20,6 +20,7 @@ from app.schemas.membership import (
 MAX_FREEZE_CYCLES = 3
 
 
+
 class MembershipNotFoundError(Exception):
     """Raised when a membership_id does not exist."""
 
@@ -62,7 +63,7 @@ class MembershipService:
         if not is_active:
             return "frozen" if frozen_at is not None else "inactive"
 
-        today = datetime.utcnow()
+        today = datetime.utcnow() + BOGOTA_OFFSET
         days_remaining = (end_date - today).days
 
         if days_remaining < 0:
@@ -120,7 +121,7 @@ class MembershipService:
             if used >= membership.entries_total:
                 data.status = "exhausted"
 
-        today = datetime.utcnow()
+        today = datetime.utcnow() + BOGOTA_OFFSET
         days_remaining = max(0, (membership.end_date - today).days)
 
         return {
@@ -147,7 +148,7 @@ class MembershipService:
         if not membership or membership.entries_total is None:
             return False
 
-        now = datetime.utcnow()
+        now = datetime.utcnow() + BOGOTA_OFFSET
         if membership.end_date < now:
             return False
 
@@ -166,7 +167,7 @@ class MembershipService:
         if not membership or membership.entries_total is None:
             return VoucherWarning(has_active_voucher=False)
 
-        now = datetime.utcnow()
+        now = datetime.utcnow() + BOGOTA_OFFSET
         if membership.end_date < now:
             return VoucherWarning(has_active_voucher=False)
 

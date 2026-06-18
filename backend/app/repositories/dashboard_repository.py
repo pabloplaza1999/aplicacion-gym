@@ -69,7 +69,7 @@ class DashboardRepository:
         )
 
         member_best: dict = {}
-        now = datetime.utcnow()
+        now = datetime.utcnow() + BOGOTA_OFFSET
 
         for member_id, end_date, is_active, frozen_at, entries_total, plan_type, used in rows:
             if not is_active:
@@ -141,7 +141,7 @@ class DashboardRepository:
             .all()
         )
 
-        now = datetime.utcnow()
+        now = datetime.utcnow() + BOGOTA_OFFSET
         plan_counts: dict = {}
 
         for row in rows:

@@ -338,6 +338,24 @@ POST /api/notifications/run — ejecuta ciclo manualmente
 | `backend/app/api/routes/store.py` | `/customers/*` → alias MemberService con `_member_as_customer()` helper |
 | `backend/app/api/routes/members.py` | `DELETE /{id}?hard=true` atrapa `ValueError` → HTTP 400 |
 
+🔧 fix-td46-calculate-status `_calculate_status` en `MembershipService` ahora usa `datetime.utcnow() + BOGOTA_OFFSET` (hora Bogotá local) en lugar de `datetime.utcnow()`. Corrige que membresías vigentes aparecieran como `expired` desde las 19:00 Bogotá del día anterior al vencimiento real (UTC medianoche = 19:00 Bogotá). `BOGOTA_OFFSET` ya estaba importado desde `app.core.config`. Cambio de 1 línea; sin impacto histórico, sin migraciones. Afecta todos los flujos que invocan `_calculate_status`: `_enrich_membership`, `get_active_membership`, `get_all_memberships`, `create_membership`, `renew_membership`, `set_membership_active`. TD-46 resuelto.
+
+| Archivo | Cambio |
+|---|---|
+| `backend/app/services/membership_service.py` | línea 66: `today = datetime.utcnow() + BOGOTA_OFFSET` |
+
+---
+
+🔧 fix-tz-normalization Normalización completa del uso de hora Bogotá en el dominio de membresías y dashboard. Consolida TD-52, TD-53 y TD-54 en una única corrección de 5 líneas. Causa raíz: `datetime.utcnow()` usado para lógica de negocio que debe evaluarse con hora local (`datetime.utcnow() + BOGOTA_OFFSET`). Sin cambios arquitectónicos, sin migraciones, sin impacto histórico. `BOGOTA_OFFSET` ya importado en ambos archivos. Freeze/unfreeze mantienen UTC-vs-UTC intencionalmente (correcto). TD-52, TD-53 y TD-54 resueltos.
+
+| Archivo | Cambio |
+|---|---|
+| `backend/app/repositories/dashboard_repository.py` | Línea 72 (`get_memberships_by_status`): `now = datetime.utcnow() + BOGOTA_OFFSET` |
+| `backend/app/repositories/dashboard_repository.py` | Línea 144 (`get_members_by_plan`): `now = datetime.utcnow() + BOGOTA_OFFSET` |
+| `backend/app/services/membership_service.py` | Línea 124 (`_enrich_membership`): `today = datetime.utcnow() + BOGOTA_OFFSET` |
+| `backend/app/services/membership_service.py` | Línea 151 (`_has_active_valid_voucher`): `now = datetime.utcnow() + BOGOTA_OFFSET` |
+| `backend/app/services/membership_service.py` | Línea 170 (`get_active_voucher_warning`): `now = datetime.utcnow() + BOGOTA_OFFSET` |
+
 ## Próximo paso
 
 ### Actividades operativas pendientes (no son deuda de código)
@@ -345,6 +363,8 @@ POST /api/notifications/run — ejecuta ciclo manualmente
 
 ### Backlog funcional
 - **F1 Bloque B:** ✅ Completado (2026-06-18). SEC-010/012/015/017 resueltos.
+- **TD-46:** ✅ Completado (2026-06-18). `_calculate_status` corregido a hora Bogotá.
+- **TD-52/53/54:** ✅ Completado (2026-06-18). Normalización zona horaria Bogotá en Dashboard y MembershipService — 5 líneas en 2 archivos.
 - **TD-35 (SEC-008):** Dependencias con CVEs — iniciativa separada, pendiente de aprobación.
 - **F2 auth staff:** Siguiente fase principal.
 - **Notificaciones Fase 3:** canales adicionales (WhatsApp/SMS) o plantillas personalizables.
