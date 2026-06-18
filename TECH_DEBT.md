@@ -365,14 +365,14 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-33 | Scheduler sin healthcheck Docker — fallos solo visibles en logs del contenedor | Baja |
 | TD-34 | Contenedor corre como root — SEC-007 (F1) | ~~Alta~~ **RESUELTO** |
 | TD-35 | `cryptography 41.0.7` + deps desactualizadas con CVEs — SEC-008 (F1) | Alta |
-| TD-36 | Docs OpenAPI expuestas en producción — SEC-010 (F1) | Media |
+| TD-36 | Docs OpenAPI expuestas en producción — SEC-010 (F1) | ~~Media~~ **RESUELTO** |
 | TD-37 | `debug=True` por defecto en `config.py` — SEC-011 (F1) | ~~Media~~ **RESUELTO** |
-| TD-38 | CORS permisivo: `allow_credentials` + métodos/headers wildcard — SEC-012 (F1) | Media |
+| TD-38 | CORS permisivo: `allow_credentials` + métodos/headers wildcard — SEC-012 (F1) | ~~Media~~ **RESUELTO** |
 | TD-39 | PII en logs 422: `exc.errors()` incluye `input` del cliente — SEC-013 (F1) | ~~Media~~ **RESUELTO** |
 | TD-40 | SQLite y backups sin cifrar en reposo — SEC-014 (diferido F4) | Media |
-| TD-41 | Sin cabeceras de seguridad HTTP en nginx — SEC-015 (F1) | Media |
+| TD-41 | Sin cabeceras de seguridad HTTP en nginx — SEC-015 (F1) | ~~Media~~ **RESUELTO** |
 | TD-42 | Sin rate limiting en ningún endpoint — SEC-016 (diferido F5) | Media |
-| TD-43 | `str(e)` expuesto al cliente en errores de negocio — SEC-017 (F1) | Media |
+| TD-43 | `str(e)` expuesto al cliente en errores de negocio — SEC-017 (F1) | ~~Media~~ **RESUELTO** |
 | TD-44 | Sin `TrustedHostMiddleware` — SEC-019 (diferido F5) | Baja |
 | TD-48 | Tabla `customers`, `CustomerService` y `sales.customer_id` mantenidos transitoriamente (Cliente Único Phase 1) | Baja |
 | TD-49 | `CreditPayment` definido en `customer.py`, importado por `member_repository.py` — acoplamiento cruzado | Baja |
@@ -401,6 +401,14 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 
 **Resueltos en Cliente Único Phase 1 (`cliente-unico`, 2026-06-17):**
 - TD-19: `sales.member_id` promovida a columna canónica del ORM; `Sale.member_id` + `Member` son ahora la entidad central de ventas. `sales.customer_id` pasa a ser la columna legado (ver TD-48). ✅
+
+**Resueltos en F1 Bloque B — Endurecimiento de seguridad en runtime (`f1-bloque-b`, 2026-06-18):**
+Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditado · Aprobado** (Paso 5 PASS · Paso 5.5 PASS sin impacto histórico · Paso 6 auditoría APROBADA con observaciones). DEF-01 (`connect-src`) identificado y resuelto dentro del mismo ciclo.
+- TD-36 (SEC-010): OpenAPI docs deshabilitados en producción (`docs_url=None` cuando `debug=False`) ✅
+- TD-38 (SEC-012): CORS explícito — métodos, headers y orígenes mínimos; `allow_credentials=False` ✅
+- TD-41 (SEC-015): 4 headers de seguridad HTTP en Nginx (server-level, herencia correcta); CSP con Google Fonts y `connect-src localhost:8000` para despliegue single-PC ✅
+- TD-43 (SEC-017): `except Exception` en `backup.py` y `notifications.py` retorna mensajes genéricos al cliente; `logger.error` preserva detalle técnico en logs del servidor ✅
+- **Consideración de despliegue (no es deuda técnica):** Si el modelo de acceso cambia a LAN o Internet, actualizar `connect-src` en `nginx.conf` y `CORS_ORIGINS` en `.env` con el nuevo origen. No aplica al despliegue actual (single-PC).
 
 **Resueltos en F1 Bloque A — Endurecimiento del empaquetado (`f1-bloque-a-hardening`, 2026-06-15):**
 Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditado · Aprobado** (Paso 5 PASS con riesgos operativos · Paso 5.5 PASS sin impacto histórico · Paso 6 auditoría APROBADA). **Sin defectos abiertos.**
@@ -515,11 +523,11 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 ## TD-36 — Docs OpenAPI expuestas en producción · SEC-010
 
 - **ID:** TD-36 · **Hallazgo F0:** SEC-010 (Media)
-- **Estado:** Abierto — pendiente Human Gate F0.
+- **Estado:** ✅ RESUELTO (F1 Bloque B · `f1-bloque-b`, 2026-06-18). Validado en Paso 5 (PASS · `/docs`/`/redoc`/`/openapi.json` ausentes con `debug=False`); Paso 5.5 (sin impacto en datos); auditoría Paso 6 APROBADA. Sin defectos abiertos.
+- **Solución aplicada:** `FastAPI(docs_url="/docs" if settings.debug else None, redoc_url="/redoc" if settings.debug else None, openapi_url="/openapi.json" if settings.debug else None)` en `main.py`. En desarrollo (`debug=True`) las rutas permanecen activas.
 - **Descripción:** `/docs`, `/redoc` y `/openapi.json` están activos en todo momento. En producción exponen toda la superficie de la API sin necesidad de ingeniería inversa.
 - **Módulos afectados:** `backend/app/main.py`.
 - **Prioridad:** Media.
-- **Recomendación futura (F1):** `docs_url=None, redoc_url=None` cuando `settings.debug=False`.
 
 ---
 
@@ -538,11 +546,11 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 ## TD-38 — CORS permisivo: allow_credentials + métodos/headers wildcard · SEC-012
 
 - **ID:** TD-38 · **Hallazgo F0:** SEC-012 (Media)
-- **Estado:** Abierto — pendiente Human Gate F0.
+- **Estado:** ✅ RESUELTO (F1 Bloque B · `f1-bloque-b`, 2026-06-18). Validado en Paso 5 (PASS · preflight OPTIONS retorna métodos explícitos sin `allow-credentials`; origen no autorizado rechazado); Paso 5.5 (sin impacto en datos); auditoría Paso 6 APROBADA. Sin defectos abiertos.
+- **Solución aplicada:** `CORSMiddleware(allow_credentials=False, allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"], allow_headers=["Content-Type"], allow_origins=settings.cors_origins)`. Orígenes tomados de `CORS_ORIGINS` en `.env` (configurados para `http://localhost`/`http://localhost:80` — consistente con despliegue single-PC actual).
 - **Descripción:** `CORSMiddleware` con `allow_credentials=True` + `allow_methods=["*"]` + `allow_headers=["*"]`. Cuando se implemente auth por cookie/sesión (F2), este CORS puede habilitar ataques CSRF cross-origin.
 - **Módulos afectados:** `backend/app/main.py`.
 - **Prioridad:** Media.
-- **Recomendación futura (F1):** Listar orígenes, métodos y headers explícitamente; `allow_credentials=False` si se usa JWT en header (no cookie).
 
 ---
 
@@ -572,11 +580,12 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 ## TD-41 — Sin cabeceras de seguridad HTTP en nginx · SEC-015
 
 - **ID:** TD-41 · **Hallazgo F0:** SEC-015 (Media)
-- **Estado:** Abierto — pendiente Human Gate F0.
+- **Estado:** ✅ RESUELTO (F1 Bloque B · `f1-bloque-b`, 2026-06-18). Validado en Paso 5 (PASS · 4 headers presentes en los 3 location contexts; DEF-01 `connect-src` identificado y resuelto en el mismo ciclo; Dashboard carga con datos reales vía Nginx); Paso 5.5 (sin impacto en datos); auditoría Paso 6 APROBADA. Sin defectos abiertos.
+- **Solución aplicada:** `add_header` a nivel `server {}` en `nginx.conf` con herencia correcta (cache via `expires`, no `add_header`, para no romper child locations). Headers aplicados: `X-Frame-Options "SAMEORIGIN"`, `X-Content-Type-Options "nosniff"`, `Referrer-Policy "strict-origin-when-cross-origin"`, `Content-Security-Policy` (incluye `fonts.googleapis.com`/`gstatic.com` para Google Fonts; `connect-src 'self' http://localhost:8000` consistente con despliegue single-PC actual). HSTS diferido a F5 (TLS pendiente).
+- **Nota de despliegue:** Si el modelo de acceso cambia a LAN o Internet, actualizar `connect-src` en `nginx.conf` y `CORS_ORIGINS` en `.env` para incluir el nuevo origen.
 - **Descripción:** `nginx.conf` no incluye `Strict-Transport-Security`, `X-Frame-Options`, `X-Content-Type-Options`, `Content-Security-Policy`, `Referrer-Policy`. Expone el frontend a clickjacking, MIME-sniffing y ataques de navegador.
 - **Módulos afectados:** `frontend/nginx.conf`.
 - **Prioridad:** Media.
-- **Recomendación futura (F1):** Añadir bloque `add_header` con las cabeceras estándar. `HSTS` solo cuando TLS esté activo (F5).
 
 ---
 
@@ -594,11 +603,11 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 ## TD-43 — str(e) expuesto al cliente en errores de negocio · SEC-017
 
 - **ID:** TD-43 · **Hallazgo F0:** SEC-017 (Media)
-- **Estado:** Abierto — pendiente Human Gate F0.
+- **Estado:** ✅ RESUELTO (F1 Bloque B · `f1-bloque-b`, 2026-06-18) — scope acotado a `backup.py` y `notifications.py`. Validado en Paso 5 (PASS · mensajes genéricos al cliente; `logger.error` preserva detalle técnico en logs de servidor); Paso 5.5 (sin impacto en datos); auditoría Paso 6 APROBADA. Sin defectos abiertos en los módulos tratados.
+- **Solución aplicada:** En `backup.py` y `notifications.py`: `except ValueError` → mensaje controlado al cliente (verificado que todos los `raise ValueError(...)` en los servicios afectados son mensajes de dominio en español); `except Exception` → mensaje genérico HTTP 500 + `logger.error("...: %s", e)` con detalle completo. `import logging` + `logger = logging.getLogger(__name__)` en ambos routes. `payments.py`, `store.py` y `members.py` mantienen `str(e)` para `ValueError` de dominio — patrón válido porque todos sus `raise ValueError` son mensajes explícitamente orientados al operador.
 - **Descripción:** Múltiples endpoints hacen `raise HTTPException(status_code=400, detail=str(e))` capturando `ValueError`. Puede filtrar rutas internas, nombres de módulos u otros detalles del stack.
 - **Módulos afectados:** `api/routes/payments.py`, `store.py`, `members.py` (múltiples handlers `except ValueError`).
 - **Prioridad:** Media.
-- **Recomendación futura (F1):** Mapear excepciones de dominio a mensajes controlados. `str(e)` solo para excepciones explícitamente diseñadas para el cliente (ej. `DuplicateDocumentError`, `InsufficientStockError`).
 
 ---
 

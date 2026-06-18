@@ -304,6 +304,26 @@ POST /api/notifications/run — ejecuta ciclo manualmente
 
 **Estado de despliegue:** ⏳ Pendiente de rebuild + recreate en los entornos de producción actuales (los contenedores en marcha siguen en las imágenes previas — root, bind `0.0.0.0`). Es actividad operativa de release, no deuda técnica.
 
+🔧 f1-bloque-b **F1 — Endurecimiento de seguridad en runtime (Bloque B).** Cuatro hallazgos de riesgo medio del baseline F0, sin tocar lógica de negocio ni contratos de endpoints. DEF-01 (`connect-src` bloqueando API) identificado durante Paso 5 y resuelto dentro del mismo ciclo.
+- **SEC-010** — OpenAPI docs deshabilitados en producción: `FastAPI(docs_url=None, redoc_url=None, openapi_url=None)` cuando `settings.debug=False`. En desarrollo permanecen activos. Cierra TD-36.
+- **SEC-012** — CORS explícito y mínimo: `allow_credentials=False`, métodos y headers listados explícitamente (`Content-Type` únicamente, verificado contra `api.ts`), orígenes tomados de `settings.cors_origins`. Cierra TD-38.
+- **SEC-015** — Headers de seguridad HTTP en Nginx: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Content-Security-Policy` a nivel `server {}` con herencia correcta (cache vía `expires`, no `add_header`). CSP incluye `fonts.googleapis.com`/`gstatic.com` (Google Fonts) y `connect-src 'self' http://localhost:8000` (arquitectura single-PC). HSTS diferido a F5. Cierra TD-41.
+- **SEC-017** — `str(e)` en `backup.py` y `notifications.py`: `except ValueError` → mensaje controlado al cliente; `except Exception` → HTTP 500 genérico + `logger.error(...)`. Detalle técnico preservado en logs del servidor. Cierra TD-43.
+
+### Archivos (f1-bloque-b)
+| Archivo | Cambio |
+|---|---|
+| `backend/app/main.py` | `FastAPI` condiciona docs a `debug`; `CORSMiddleware` explícito y mínimo |
+| `frontend/nginx.conf` | 4 headers de seguridad + CSP; cache via `expires`; DEF-01 fix `connect-src` |
+| `backend/app/api/routes/backup.py` | `logger` + `except ValueError`/`Exception` con mensajes controlados |
+| `backend/app/api/routes/notifications.py` | `logger` + split `except ValueError`/`Exception` con mensajes controlados |
+
+### Estado final (Pasos 5–7)
+**Estado técnico:** Implementado · Probado · Auditado · Aprobado. DEF-01 resuelto. Sin defectos abiertos.
+- Paso 5 (PASS): validación en Docker — headers confirmados vía `curl`; Dashboard carga con datos reales (`GET /api/dashboard 200`); DEF-01 detectado y corregido.
+- Paso 5.5 (PASS — sin impacto histórico): cambios exclusivamente en capas de configuración e infraestructura. Sin tablas, migraciones ni lógica de datos afectada.
+- Paso 6 (auditoría APROBADA con observaciones): configuración CSP/CORS consistente con despliegue real single-PC. Consideración de despliegue documentada para futura adopción LAN/Internet.
+
 🔧 cliente-unico **Cliente Único — Fase 1 (backend).** Unifica las entidades `Customer` (tienda) y `Member` (gimnasio) en un único cliente canónico. `Sales.member_id` reemplaza `Sales.customer_id` como columna canónica. `/store/customers/*` redirige a `MemberService` (alias sin cambios de frontend). `SaleCreate.customer_id` se reutiliza semánticamente como `member_id` — cero cambios de frontend ni de contrato API. `_enrich_sale()` mapea `sale.member_id → SaleRead.customer_id` para retrocompatibilidad. `_migrate_historical_customer_ids()` eliminado del startup (creaba Customers desde Members, revirtiendo la migración). `_purge_orphaned_cancelled_sales()` actualizado para validar contra `members` y `customers` (modelo dual transitorio). `MemberService.hard_delete_member()` ahora bloquea si el cliente tiene ventas activas (PAID/PENDING/PARTIAL). Nuevo `DELETE /store/customers/{id}` bloquea además si el cliente tiene membresías del gimnasio. Tabla `customers` y servicio `CustomerService` se mantienen temporalmente (TD-48). Migración idempotente `_add_column_if_missing("sales", "member_id", ...)` + `_migrate_sales_to_member_id()` en startup. Frontend diferido a Fase 2.
 
 ### Archivos modificados (cliente-unico)
@@ -324,7 +344,9 @@ POST /api/notifications/run — ejecuta ciclo manualmente
 - **Deploy producción — Cliente Único Phase 1** (TD-51, Alta): ejecutar checklist Paso 5.5 sobre la instalación real del gimnasio antes de hacer `docker compose build backend`. Verificar V1–V4 sobre datos reales de `customers`, `sales` y `members`.
 
 ### Backlog funcional
-- **F1 Bloque B (P2):** SEC-010/012/015/017 + SEC-008 (deps). → F2 auth staff.
+- **F1 Bloque B:** ✅ Completado (2026-06-18). SEC-010/012/015/017 resueltos.
+- **TD-35 (SEC-008):** Dependencias con CVEs — iniciativa separada, pendiente de aprobación.
+- **F2 auth staff:** Siguiente fase principal.
 - **Notificaciones Fase 3:** canales adicionales (WhatsApp/SMS) o plantillas personalizables.
 - **Tienda Fase D:** exportación de reportes o mejoras operativas.
 - **Cliente Único Phase 2:** actualizar frontend para usar `member_id` directamente; eliminar tabla `customers`, `CustomerService` y columna `sales.customer_id` (prerrequisito: mover `CreditPayment` a su propio módulo — TD-49).

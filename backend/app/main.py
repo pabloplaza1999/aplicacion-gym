@@ -21,19 +21,23 @@ logger = logging.getLogger(__name__)
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
 
+    # TD-36: OpenAPI docs disabled in production (debug=False).
     app = FastAPI(
         title=settings.project_name,
         version=settings.project_version,
         debug=settings.debug,
+        docs_url="/docs" if settings.debug else None,
+        redoc_url="/redoc" if settings.debug else None,
+        openapi_url="/openapi.json" if settings.debug else None,
     )
 
-    # Add CORS middleware
+    # TD-38: explicit methods, headers and no credentials (no cookie/session auth).
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type"],
     )
 
     # Database startup event
