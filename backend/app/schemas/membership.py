@@ -51,6 +51,12 @@ class MembershipRead(BaseModel):
         description="[INTERNO] Última vez que el job de notificaciones envió aviso de vencimiento. "
                     "Solo escrito por el notification job (Fase 2). Nunca modificar desde servicios de membresía o frontend.",
     )
+    last_correction_at: Optional[datetime] = Field(
+        None, description="Fecha y hora de la última corrección de fecha de inicio."
+    )
+    last_correction_reason: Optional[str] = Field(
+        None, description="Motivo de la última corrección de fecha de inicio."
+    )
 
     model_config = {"from_attributes": True}
 

@@ -13,9 +13,11 @@ from app.schemas.membership import (
     MembershipHistoryResponse,
     VoucherWarning,
 )
+from app.schemas.membership_correction import MembershipStartDateCorrectionCreate
 from app.services.membership_service import (
     ActiveVoucherExistsError,
     FreezeLimitReachedError,  # raised when freeze_count >= MAX_FREEZE_CYCLES
+    MembershipCorrectionError,
     MembershipNotFoundError,
     MembershipService,
 )
@@ -207,6 +209,36 @@ def set_membership_active(
     if not membership:
         raise HTTPException(status_code=404, detail="Membresía no encontrada")
     return membership
+
+
+@router.patch("/memberships/{membership_id}/start-date", response_model=MembershipWithPlanRead)
+def correct_membership_start_date(
+    membership_id: int,
+    data: MembershipStartDateCorrectionCreate,
+    db: Session = Depends(get_db),
+) -> MembershipWithPlanRead:
+    """
+    Correct the start_date of an existing membership.
+
+    Recalculates end_date preserving the original plan duration.
+    For frozen memberships, also recalculates frozen_days_remaining.
+    Writes an immutable audit record atomically with the update.
+
+    **Blocked when:**
+    - Membership is expired or manually deactivated (not frozen).
+    - Membership has recorded attendances.
+    - New start_date is in the future.
+    - Correction would make end_date fall in the past.
+    - Correction would overlap with another active membership of the same member.
+    - For frozen memberships: new end_date would be before frozen_at.
+    """
+    service = MembershipService(db)
+    try:
+        return service.correct_start_date(membership_id, data.new_start_date, data.reason)
+    except MembershipNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except MembershipCorrectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/memberships/{membership_id}", response_model=MembershipWithPlanRead)

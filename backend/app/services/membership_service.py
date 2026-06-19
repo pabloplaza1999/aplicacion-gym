@@ -1,12 +1,13 @@
 """Membership service for business logic."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.core.config import BOGOTA_OFFSET
 from app.repositories.attendance_repository import AttendanceRepository
+from app.repositories.membership_correction_repository import MembershipCorrectionRepository
 from app.repositories.membership_repository import MembershipRepository
 from app.schemas.membership import (
     MembershipCreate,
@@ -18,7 +19,6 @@ from app.schemas.membership import (
 
 # Maximum freeze/unfreeze cycles allowed per membership (TD-13).
 MAX_FREEZE_CYCLES = 3
-
 
 
 class MembershipNotFoundError(Exception):
@@ -38,6 +38,10 @@ class ActiveVoucherExistsError(Exception):
     """
 
 
+class MembershipCorrectionError(Exception):
+    """Raised when a membership start_date correction is blocked by a business rule."""
+
+
 class MembershipService:
     """Service for membership business logic operations."""
 
@@ -45,6 +49,7 @@ class MembershipService:
         """Initialize service with database session."""
         self.repository = MembershipRepository(db)
         self.attendance_repo = AttendanceRepository(db)
+        self.correction_repo = MembershipCorrectionRepository(db)
         self.db = db
 
     def _calculate_status(
@@ -100,6 +105,7 @@ class MembershipService:
         Passes frozen_at to _calculate_status so frozen state is reflected.
         For voucher memberships, overrides status to 'exhausted' when all
         entries have been consumed but the membership is still within date (TD-01).
+        Populates last_correction_at/reason from the latest audit log entry.
         """
         if plan is None:
             plan = self.repository.get_plan_by_id(membership.plan_id)
@@ -124,12 +130,16 @@ class MembershipService:
         today = datetime.utcnow() + BOGOTA_OFFSET
         days_remaining = max(0, (membership.end_date - today).days)
 
+        last_correction = self.correction_repo.get_latest_for_membership(membership.id)
+
         return {
             **data.model_dump(),
             "days_remaining": days_remaining,
             "plan_name": plan.name if plan else None,
             "plan_price": plan.price if plan else None,
             "plan_duration_days": plan.duration_days if plan else None,
+            "last_correction_at": last_correction.corrected_at if last_correction else None,
+            "last_correction_reason": last_correction.reason if last_correction else None,
         }
 
     def _has_active_valid_voucher(self, member_id: int) -> bool:
@@ -420,3 +430,112 @@ class MembershipService:
             results.append(MembershipWithPlanRead(**enriched))
 
         return results
+
+    def correct_start_date(
+        self, membership_id: int, new_start_date: date, reason: str
+    ) -> MembershipWithPlanRead:
+        """
+        Correct the start_date of an existing membership.
+
+        Recalculates end_date preserving the original plan duration.
+        For frozen memberships, also recalculates frozen_days_remaining.
+        Writes an immutable audit record (membership_correction_logs) atomically
+        with the membership update in a single commit.
+
+        Raises:
+            MembershipNotFoundError: membership does not exist.
+            MembershipCorrectionError: any business rule violation (RN-01..RN-13).
+        """
+        membership = self.repository.get_by_id(membership_id)
+        if not membership:
+            raise MembershipNotFoundError(f"Membresía {membership_id} no encontrada.")
+
+        # RN-01 / RN-03: only active or frozen memberships are correctable.
+        if not membership.is_active and membership.frozen_at is None:
+            raise MembershipCorrectionError(
+                "Solo se pueden corregir membresías activas o congeladas."
+            )
+
+        today_bogota = datetime.utcnow() + BOGOTA_OFFSET
+
+        # RN-02: expired memberships are not correctable.
+        if membership.end_date < today_bogota:
+            raise MembershipCorrectionError(
+                "No es posible editar una membresía vencida."
+            )
+
+        # RN-04: memberships with recorded attendances are not correctable.
+        if self.attendance_repo.count_by_membership(membership_id) > 0:
+            raise MembershipCorrectionError(
+                "No es posible editar una membresía con asistencias registradas."
+            )
+
+        # Convert Bogotá calendar date to UTC datetime (Bogotá midnight = UTC 05:00).
+        new_start_dt = datetime(
+            new_start_date.year, new_start_date.month, new_start_date.day, 5, 0, 0
+        )
+
+        # RN-05: new start_date cannot be in the future.
+        if new_start_dt.date() > today_bogota.date():
+            raise MembershipCorrectionError(
+                "La fecha de inicio no puede ser futura."
+            )
+
+        # RN-12: no-op detection.
+        if new_start_dt == membership.start_date:
+            raise MembershipCorrectionError(
+                "La fecha indicada es idéntica a la registrada. No se realizaron cambios."
+            )
+
+        # Recalculate end_date using the same plan-aware logic as creation.
+        new_end_dt = self._calculate_end_date(new_start_dt, membership.plan_id)
+
+        # RN-06: correction must not produce an expired membership.
+        if new_end_dt <= today_bogota:
+            raise MembershipCorrectionError(
+                "La corrección generaría una membresía con fecha de vencimiento en el pasado. "
+                "Verifique la fecha ingresada."
+            )
+
+        # RN-10: for frozen memberships, new end_date must be after frozen_at.
+        new_frozen_days_remaining: Optional[int] = None
+        if membership.frozen_at is not None:
+            if new_end_dt <= membership.frozen_at:
+                raise MembershipCorrectionError(
+                    "La nueva fecha de vencimiento es anterior a la fecha de congelamiento. "
+                    "Ajuste la fecha de inicio."
+                )
+            new_frozen_days_remaining = (new_end_dt - membership.frozen_at).days
+
+        # RN-13: correction must not overlap with another active membership of the same member.
+        if self.repository.get_active_overlapping(
+            membership.member_id, new_start_dt, new_end_dt, membership_id
+        ):
+            raise MembershipCorrectionError(
+                "La corrección generaría un traslape con la membresía activa del período siguiente. "
+                "Para corregir el período completo, corrija primero la membresía más reciente."
+            )
+
+        # Persist: audit log + membership update in a single commit.
+        self.correction_repo.create(
+            membership_id=membership_id,
+            member_id=membership.member_id,
+            old_start_date=membership.start_date,
+            new_start_date=new_start_dt,
+            old_end_date=membership.end_date,
+            new_end_date=new_end_dt,
+            old_frozen_days_remaining=membership.frozen_days_remaining,
+            new_frozen_days_remaining=new_frozen_days_remaining,
+            reason=reason,
+        )
+
+        updated = self.repository.correct_start_date_no_commit(
+            membership_id, new_start_dt, new_end_dt, new_frozen_days_remaining
+        )
+
+        self.db.commit()
+        self.db.refresh(updated)
+
+        plan = self.repository.get_plan_by_id(updated.plan_id)
+        enriched = self._enrich_membership(updated, plan)
+        return MembershipWithPlanRead(**enriched)

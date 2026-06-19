@@ -228,3 +228,49 @@ class MembershipRepository:
     def get_plan_by_id(self, plan_id: int) -> Optional[Plan]:
         """Get plan details by ID."""
         return self.db.query(Plan).filter(Plan.id == plan_id).first()
+
+    def get_active_overlapping(
+        self,
+        member_id: int,
+        new_start_dt: datetime,
+        new_end_dt: datetime,
+        exclude_membership_id: int,
+    ) -> Optional[Membership]:
+        """Return the first active membership for a member that overlaps [new_start_dt, new_end_dt).
+
+        Used to enforce RN-13: a start_date correction must not create temporal overlap
+        with another active membership of the same client.
+        """
+        return (
+            self.db.query(Membership)
+            .filter(
+                Membership.member_id == member_id,
+                Membership.id != exclude_membership_id,
+                Membership.is_active == True,  # noqa: E712
+                Membership.start_date < new_end_dt,
+                Membership.end_date > new_start_dt,
+            )
+            .first()
+        )
+
+    def correct_start_date_no_commit(
+        self,
+        membership_id: int,
+        new_start_dt: datetime,
+        new_end_dt: datetime,
+        new_frozen_days_remaining: Optional[int],
+    ) -> Optional[Membership]:
+        """Update start_date, end_date and optionally frozen_days_remaining without committing.
+
+        Caller owns the transaction. Used by MembershipService.correct_start_date so that
+        the correction log insert and this update share a single commit.
+        """
+        membership = self.get_by_id(membership_id)
+        if not membership:
+            return None
+        membership.start_date = new_start_dt
+        membership.end_date = new_end_dt
+        if new_frozen_days_remaining is not None:
+            membership.frozen_days_remaining = new_frozen_days_remaining
+        self.db.flush()
+        return membership

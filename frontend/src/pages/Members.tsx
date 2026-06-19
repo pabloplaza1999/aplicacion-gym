@@ -11,6 +11,7 @@ import Badge from '../components/Badge'
 import Spinner from '../components/Spinner'
 import Empty from '../components/Empty'
 import MemberInfo from '../components/MemberInfo'
+import StartDateCorrectionModal from '../components/StartDateCorrectionModal'
 import { onlyLetters, onlyDigits, isValidEmail, fmtBogotaDate } from '../utils/validators'
 
 function fmt(n: number) {
@@ -97,8 +98,9 @@ function MemberDetail({ member, plans, onClose, onUpdated }: {
   const [payMethod, setPayMethod]         = useState<PaymentMethod>('cash')
   const [saving, setSaving]               = useState(false)
   const [err, setErr]                     = useState('')
-  const [voucherWarning, setVoucherWarning] = useState<VoucherWarning | null>(null)
-  const [pendingAction, setPendingAction]   = useState<'create' | 'renew' | null>(null)
+  const [voucherWarning, setVoucherWarning]       = useState<VoucherWarning | null>(null)
+  const [pendingAction, setPendingAction]         = useState<'create' | 'renew' | null>(null)
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false)
 
   const load = useCallback(async () => {
     setLoadingDetail(true)
@@ -237,6 +239,12 @@ function MemberDetail({ member, plans, onClose, onUpdated }: {
                       </button>
                     )}
                   </div>
+                  {(['active', 'expiring', 'frozen'] as const).includes(membership.status as 'active' | 'expiring' | 'frozen') && (
+                    <button onClick={() => setShowCorrectionModal(true)}
+                      className="btn-ghost w-full text-xs uppercase tracking-widest text-amber-500 hover:text-amber-400">
+                      Corregir fecha de inicio
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="bg-surface-raised border border-surface-border rounded p-4">
@@ -349,6 +357,14 @@ function MemberDetail({ member, plans, onClose, onUpdated }: {
       <div className="mt-auto pt-4 border-t border-surface-border">
         <button onClick={onClose} className="btn-ghost w-full text-xs uppercase tracking-widest">Cerrar panel</button>
       </div>
+
+      {showCorrectionModal && membership && (
+        <StartDateCorrectionModal
+          membership={membership}
+          onUpdated={() => { load(); onUpdated() }}
+          onClose={() => setShowCorrectionModal(false)}
+        />
+      )}
     </div>
   )
 }
