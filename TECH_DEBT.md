@@ -930,6 +930,19 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 
 ---
 
+## TD-66 — Rutas Premium accesibles por URL directa cuando módulo desactivado
+
+- **ID:** TD-66
+- **Estado:** Abierto — aceptado, diferido.
+- **Descripción:** Con `module_store=false` o `module_notifications=false`, el sidebar oculta los items correspondientes pero las rutas React Router `/tienda` y `/configuracion` siguen registradas. Un operador que escriba la URL directamente puede acceder a la página, que fallará con errores de carga (backend devuelve 404 en todos los endpoints del módulo desactivado).
+- **Riesgo:** Bajo. En ISV Local el backend es la capa de control real. El frontend falla graceful — las páginas muestran errores pero no exponen datos ni permiten escrituras. No es un vector de seguridad (mismo usuario único).
+- **Impacto:** UX degradada si el operador navega directamente a una URL de módulo desactivado.
+- **Módulos afectados:** `frontend/src/App.tsx` (registro de rutas), `frontend/src/pages/Store.tsx`, `frontend/src/pages/Settings.tsx`.
+- **Prioridad:** Baja.
+- **Recomendación futura (F5+):** Añadir guard en las rutas protegidas por módulo usando `useFeatures()` en `ProtectedRoute` o un `<ModuleRoute moduleFlag="store">` wrapper.
+
+---
+
 ## TD-62 — Acceso LAN multi-PC diferido a Edición Local Plus / F5
 
 - **ID:** TD-62

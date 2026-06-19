@@ -580,3 +580,15 @@ export interface ChangePasswordRequest {
   new_password: string
   confirm_password: string
 }
+
+// ── Platform Features (F4-A/B) ────────────────────────────────────────────────
+export interface PremiumFeatures {
+  notifications: boolean
+  body_tracking: boolean
+  store: boolean
+}
+
+export interface FeaturesResponse {
+  core: Record<string, boolean>
+  premium: PremiumFeatures
+}

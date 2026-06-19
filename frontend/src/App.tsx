@@ -1,5 +1,6 @@
 import { Routes, Route, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { FeaturesProvider, useFeatures } from './contexts/FeaturesContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Dashboard from './pages/Dashboard'
 import Members from './pages/Members'
@@ -9,8 +10,9 @@ import Store from './pages/Store'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import ChangePassword from './pages/ChangePassword'
+import type { PremiumFeatures } from './types'
 
-const NAV = [
+const NAV: { to: string; label: string; icon: JSX.Element; moduleFlag?: keyof PremiumFeatures }[] = [
   { to: '/',         label: 'Dashboard', icon: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
       <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
@@ -36,7 +38,7 @@ const NAV = [
       <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
     </svg>
   )},
-  { to: '/tienda', label: 'Tienda', icon: (
+  { to: '/tienda', label: 'Tienda', moduleFlag: 'store', icon: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
       <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
       <line x1="3" y1="6" x2="21" y2="6"/>
@@ -45,8 +47,8 @@ const NAV = [
   )},
 ]
 
-const NAV_BOTTOM = [
-  { to: '/configuracion', label: 'Configuración', icon: (
+const NAV_BOTTOM: { to: string; label: string; icon: JSX.Element; moduleFlag?: keyof PremiumFeatures }[] = [
+  { to: '/configuracion', label: 'Configuración', moduleFlag: 'notifications', icon: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
       <circle cx="12" cy="12" r="3"/>
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -58,11 +60,15 @@ function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { username, logout } = useAuth()
+  const { premium } = useFeatures()
 
   function handleLogout() {
     logout()
     navigate('/login', { replace: true })
   }
+
+  const visibleNav = NAV.filter(item => !item.moduleFlag || premium[item.moduleFlag])
+  const visibleNavBottom = NAV_BOTTOM.filter(item => !item.moduleFlag || premium[item.moduleFlag])
 
   return (
     <div className="min-h-screen flex">
@@ -83,7 +89,7 @@ function AppLayout() {
           </div>
         </div>
         <nav className="flex-1 p-3 space-y-0.5">
-          {NAV.map(({ to, label, icon }) => {
+          {visibleNav.map(({ to, label, icon }) => {
             const active = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
             return (
               <NavLink key={to} to={to}
@@ -100,7 +106,7 @@ function AppLayout() {
           })}
         </nav>
         <div className="p-3 border-t border-surface-border space-y-0.5">
-          {NAV_BOTTOM.map(({ to, label, icon }) => {
+          {visibleNavBottom.map(({ to, label, icon }) => {
             const active = location.pathname.startsWith(to)
             return (
               <NavLink key={to} to={to}
@@ -149,20 +155,22 @@ function AppLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route element={<ProtectedRoute />}>
-          <Route path="/change-password" element={<ChangePassword />} />
-          <Route element={<AppLayout />}>
-            <Route path="/"              element={<Dashboard />} />
-            <Route path="/members"       element={<Members />} />
-            <Route path="/payments"      element={<Payments />} />
-            <Route path="/attendance"    element={<Attendance />} />
-            <Route path="/tienda"        element={<Store />} />
-            <Route path="/configuracion" element={<Settings />} />
+      <FeaturesProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="/change-password" element={<ChangePassword />} />
+            <Route element={<AppLayout />}>
+              <Route path="/"              element={<Dashboard />} />
+              <Route path="/members"       element={<Members />} />
+              <Route path="/payments"      element={<Payments />} />
+              <Route path="/attendance"    element={<Attendance />} />
+              <Route path="/tienda"        element={<Store />} />
+              <Route path="/configuracion" element={<Settings />} />
+            </Route>
           </Route>
-        </Route>
-      </Routes>
+        </Routes>
+      </FeaturesProvider>
     </AuthProvider>
   )
 }

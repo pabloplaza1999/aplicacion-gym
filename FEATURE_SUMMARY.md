@@ -619,6 +619,38 @@ Sin cambios de código. Sesión de definición de producto y arquitectura de pla
 - F6 Digital & Access (M13–18): P-06 App Móvil, P-05 Hardware, P-08 Avanzada
 - F7 Intelligence (M19–24): P-09 IA Predictiva, API pública
 
+🔧 f4-b-premium-frontend **F4-B — Módulos Premium y Frontend Dinámico.** · **Estado:** Implementado · TypeScript PASS
+
+Integración frontend↔backend vía `GET /api/config/features`. Cero cambios de backend — F4-A ya implementaba registro condicional de routers.
+
+**Cambios frontend:**
+- `FeaturesContext` (nuevo): `createContext` → `useState(ALL_TRUE)` → fetch al montar → re-render solo si responde. Patrón idéntico a `AuthContext`. Estado inicial all-true preserva compatibilidad con Rhinopower (opt-out).
+- `getFeatures()` en `api.ts`: reutiliza `req()` con `.catch(() => null)`. Mismo patrón que `getMeasurements`.
+- `App.tsx`: `FeaturesProvider` envuelve `<Routes>`. `NAV` y `NAV_BOTTOM` añaden campo `moduleFlag?: keyof PremiumFeatures`. Sidebar filtra items con `!moduleFlag || premium[moduleFlag]`. Tienda → flag `store`; Configuración → flag `notifications`.
+- `Dashboard.tsx`: panel "Notificaciones" condicionado a `{premium.notifications && ...}`. `Promise.allSettled` sin cambios — maneja 404 graceful si `notifications=false`.
+- `MemberInfo.tsx`: sección "Medidas corporales" condicionada a `{premium.body_tracking && ...}`. `handleSave` no llama `upsertMeasurements` si `body_tracking=false` (evita 404 al guardar datos personales). `useEffect` de carga omite `getMeasurements` si módulo inactivo.
+- `types/index.ts`: añade `PremiumFeatures` y `FeaturesResponse`.
+
+**Modelo de fallback (Opción B, aprobado en Paso 3):** render inmediato con all-true. Cuando `getFeatures()` resuelve, re-render con valores reales. En ISV Local el delta es imperceptible (<100ms). Sin pantalla de carga adicional.
+
+**Opt-out garantizado:** `ALL_TRUE` como estado inicial + defaults `True` en backend → instalaciones Rhinopower sin `MODULE_*` en `.env` ven todos los módulos siempre.
+
+### Archivos modificados (f4-b-premium-frontend)
+| Archivo | Cambio |
+|---|---|
+| `frontend/src/types/index.ts` | `PremiumFeatures`, `FeaturesResponse` |
+| `frontend/src/services/api.ts` | `getFeatures()` — req + catch null |
+| `frontend/src/App.tsx` | `FeaturesProvider`; `moduleFlag` en NAV items; sidebar dinámico |
+| `frontend/src/pages/Dashboard.tsx` | Panel Notificaciones condicional |
+| `frontend/src/components/MemberInfo.tsx` | Sección Medidas + `upsertMeasurements` condicionales |
+
+### Archivos nuevos (f4-b-premium-frontend)
+| Archivo | Descripción |
+|---|---|
+| `frontend/src/contexts/FeaturesContext.tsx` | `FeaturesProvider` + `useFeatures()` hook |
+
+---
+
 🔧 f4-a-platform-infra **F4-A — Infraestructura de Plataforma (gym-platform).** · **Commit:** `9f2b12b` · **Estado:** Implementado · Probado · Auditado · Aprobado
 
 - **TD-64 resuelto:** `python-jose 3.3.0` reemplazado por `PyJWT==2.9.0`. `cryptography` actualizado `41.0.7→43.0.3` (desbloqueado al eliminar jose). Tokens HS256 pre-migración compatibles (mismo formato Base64url). Import: `import jwt`; excepción: `jwt.PyJWTError`. 1 archivo modificado (`auth_service.py`).
@@ -662,6 +694,7 @@ Sin cambios de código. Sesión de definición de producto y arquitectura de pla
 ```
 
 ### Backlog funcional
+- **f4-b-premium-frontend:** ✅ Completado (2026-06-19). Módulos Premium y Frontend Dinámico. FeaturesContext + getFeatures(). Sidebar dinámico. Dashboard/MemberInfo condicionales. TypeScript PASS. Cero cambios de backend.
 - **f4-a-platform-infra:** ✅ Completado (2026-06-19). Infraestructura de plataforma gym-platform. TD-64 PyJWT cerrado. Feature flags opt-out. GET /api/config/features. Scaffolding modules/premium/. Ciclo completo Paso 1→7. Aprobado con observaciones resueltas (commit 9f2b12b, tag v1.1-rhinopower intacto).
 - **f2-auth-staff:** ✅ Completado (2026-06-19). JWT stateless, usuario admin único, flujo temporal/permanente, protección global via deps.py. Validado en Docker Compose. Ciclo completo Paso 1→7. Aprobado con observaciones (TD-58/59/60 registrados).
 - **correct-start-date:** ✅ Completado (2026-06-18). Corrección de fecha de inicio de membresía — ciclo completo Paso 1→7. Aprobado con observaciones (TD-55/56/57 diferidos).

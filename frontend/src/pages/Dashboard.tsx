@@ -7,6 +7,7 @@ import Spinner from '../components/Spinner'
 import BackupModal from '../components/BackupModal'
 import NotificationHistoryModal from '../components/NotificationHistoryModal'
 import { fmtBogotaDate } from '../utils/validators'
+import { useFeatures } from '../contexts/FeaturesContext'
 
 function fmt(n: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
@@ -263,6 +264,7 @@ function AlertsPanel({ alerts }: { alerts: AlertsSummary }) {
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const { premium } = useFeatures()
   const [kpi, setKpi] = useState<DashboardKPI | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -442,84 +444,86 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Notificaciones */}
-      <div className="card space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-1 h-5 bg-brand-500 rounded-full shadow-brand-sm" />
-            <h2 className="font-display text-lg tracking-widest text-white uppercase">Notificaciones</h2>
-            {notifStatus && (
-              <span className={`w-2 h-2 rounded-full ${
-                !notifStatus.is_configured ? 'bg-red-500' :
-                !notifStatus.enabled       ? 'bg-gray-500' : 'bg-success-400'
-              }`} />
-            )}
+      {/* Notificaciones — visible solo si el módulo está activo */}
+      {premium.notifications && (
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-1 h-5 bg-brand-500 rounded-full shadow-brand-sm" />
+              <h2 className="font-display text-lg tracking-widest text-white uppercase">Notificaciones</h2>
+              {notifStatus && (
+                <span className={`w-2 h-2 rounded-full ${
+                  !notifStatus.is_configured ? 'bg-red-500' :
+                  !notifStatus.enabled       ? 'bg-gray-500' : 'bg-success-400'
+                }`} />
+              )}
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleRunNotif}
+                disabled={runningNotif}
+                className="text-xs text-brand-400 hover:text-brand-300 font-mono underline underline-offset-2 transition-colors disabled:opacity-40"
+              >
+                {runningNotif ? 'Ejecutando...' : 'Ejecutar ahora'}
+              </button>
+              <button
+                onClick={() => setShowNotifModal(true)}
+                className="text-xs text-brand-400 hover:text-brand-300 font-mono underline underline-offset-2 transition-colors"
+              >
+                Ver historial
+              </button>
+              <Link
+                to="/configuracion"
+                className="text-xs text-gray-500 hover:text-gray-300 font-mono underline underline-offset-2 transition-colors"
+              >
+                Configurar
+              </Link>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleRunNotif}
-              disabled={runningNotif}
-              className="text-xs text-brand-400 hover:text-brand-300 font-mono underline underline-offset-2 transition-colors disabled:opacity-40"
-            >
-              {runningNotif ? 'Ejecutando...' : 'Ejecutar ahora'}
-            </button>
-            <button
-              onClick={() => setShowNotifModal(true)}
-              className="text-xs text-brand-400 hover:text-brand-300 font-mono underline underline-offset-2 transition-colors"
-            >
-              Ver historial
-            </button>
-            <Link
-              to="/configuracion"
-              className="text-xs text-gray-500 hover:text-gray-300 font-mono underline underline-offset-2 transition-colors"
-            >
-              Configurar
-            </Link>
-          </div>
+
+          {notifStatus && !notifStatus.is_configured && (
+            <p className="text-xs text-energy-400 font-mono">
+              ⚠ SMTP no configurado — las notificaciones están desactivadas.
+              <Link to="/configuracion" className="ml-2 text-brand-400 hover:text-brand-300 underline underline-offset-2">Configurar ahora</Link>
+            </p>
+          )}
+
+          {notifStatus && notifStatus.is_configured && (
+            <div className="grid grid-cols-3 gap-4 pt-1">
+              <div>
+                <p className="text-xs text-gray-600 font-mono">Enviados hoy</p>
+                <p className={`text-xl font-bold font-mono ${notifStatus.sent_today > 0 ? 'text-success-400' : 'text-gray-600'}`}>
+                  {notifStatus.sent_today}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 font-mono">Fallidos hoy</p>
+                <p className={`text-xl font-bold font-mono ${notifStatus.failed_today > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                  {notifStatus.failed_today}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 font-mono">Sin email</p>
+                <p className={`text-xl font-bold font-mono ${notifStatus.pending_count > 0 ? 'text-energy-400' : 'text-gray-600'}`}>
+                  {notifStatus.pending_count}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {notifStatus?.last_run_at && (
+            <p className="text-xs text-gray-600 font-mono">
+              Último envío: <span className="text-gray-400">
+                {new Date(notifStatus.last_run_at).toLocaleString('es-CO')}
+              </span>
+            </p>
+          )}
+
+          {runResult && (
+            <p className="text-xs text-gray-400 font-mono border-t border-surface-border pt-2">{runResult}</p>
+          )}
         </div>
-
-        {notifStatus && !notifStatus.is_configured && (
-          <p className="text-xs text-energy-400 font-mono">
-            ⚠ SMTP no configurado — las notificaciones están desactivadas.
-            <Link to="/configuracion" className="ml-2 text-brand-400 hover:text-brand-300 underline underline-offset-2">Configurar ahora</Link>
-          </p>
-        )}
-
-        {notifStatus && notifStatus.is_configured && (
-          <div className="grid grid-cols-3 gap-4 pt-1">
-            <div>
-              <p className="text-xs text-gray-600 font-mono">Enviados hoy</p>
-              <p className={`text-xl font-bold font-mono ${notifStatus.sent_today > 0 ? 'text-success-400' : 'text-gray-600'}`}>
-                {notifStatus.sent_today}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-600 font-mono">Fallidos hoy</p>
-              <p className={`text-xl font-bold font-mono ${notifStatus.failed_today > 0 ? 'text-red-400' : 'text-gray-600'}`}>
-                {notifStatus.failed_today}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-600 font-mono">Sin email</p>
-              <p className={`text-xl font-bold font-mono ${notifStatus.pending_count > 0 ? 'text-energy-400' : 'text-gray-600'}`}>
-                {notifStatus.pending_count}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {notifStatus?.last_run_at && (
-          <p className="text-xs text-gray-600 font-mono">
-            Último envío: <span className="text-gray-400">
-              {new Date(notifStatus.last_run_at).toLocaleString('es-CO')}
-            </span>
-          </p>
-        )}
-
-        {runResult && (
-          <p className="text-xs text-gray-400 font-mono border-t border-surface-border pt-2">{runResult}</p>
-        )}
-      </div>
+      )}
 
       {showBackupModal && <BackupModal onClose={() => setShowBackupModal(false)} />}
       {showNotifModal  && <NotificationHistoryModal onClose={() => setShowNotifModal(false)} />}

@@ -3,6 +3,7 @@ import { updateMember, getMeasurements, upsertMeasurements } from '../services/a
 import type { Member, BodyMeasurement, BodyMeasurementUpsert } from '../types'
 import Badge from './Badge'
 import { onlyDigits, isValidEmail } from '../utils/validators'
+import { useFeatures } from '../contexts/FeaturesContext'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const toNum    = (v: string) => { const n = parseFloat(v);   return isNaN(n) ? null : n }
@@ -66,6 +67,8 @@ const emptyM = (): MFields => ({
 })
 
 export default function MemberInfo({ member, onUpdated }: Props) {
+  const { premium } = useFeatures()
+
   // personal
   const [fullName, setFullName] = useState(member.full_name)
   const [phone,    setPhone]    = useState(member.phone)
@@ -95,8 +98,9 @@ export default function MemberInfo({ member, onUpdated }: Props) {
     setErrors({})
   }, [member.id])
 
-  // load measurements
+  // load measurements only when module is active
   useEffect(() => {
+    if (!premium.body_tracking) { setLoadingM(false); return }
     setLoadingM(true)
     getMeasurements(member.id)
       .then(data => {
@@ -119,7 +123,7 @@ export default function MemberInfo({ member, onUpdated }: Props) {
         }
       })
       .finally(() => setLoadingM(false))
-  }, [member.id])
+  }, [member.id, premium.body_tracking])
 
   const setField = (k: string) => (v: string) => {
     setM(prev => ({ ...prev, [k]: v }))
@@ -150,15 +154,15 @@ export default function MemberInfo({ member, onUpdated }: Props) {
     if (email && !isValidEmail(email))
       e.email = 'Formato inválido'
 
-    // measures: if filled, must be > 0
-    const measureKeys = ['height','shoulder','chest','waist','hip','bicep','forearm','calf','thigh','body_weight']
-    for (const k of measureKeys) {
-      if (m[k] !== '' && !isPos(m[k]))
-        e[k] = '> 0'
+    if (premium.body_tracking) {
+      const measureKeys = ['height','shoulder','chest','waist','hip','bicep','forearm','calf','thigh','body_weight']
+      for (const k of measureKeys) {
+        if (m[k] !== '' && !isPos(m[k]))
+          e[k] = '> 0'
+      }
+      if (m.age !== '' && !isNonNeg(m.age))
+        e.age = '>= 0'
     }
-    // age: if filled, must be >= 0 integer
-    if (m.age !== '' && !isNonNeg(m.age))
-      e.age = '>= 0'
 
     setErrors(e)
     return Object.keys(e).length === 0
@@ -177,21 +181,23 @@ export default function MemberInfo({ member, onUpdated }: Props) {
         notes:    notes?.trim()    || undefined,
       })
 
-      const ageRaw = toInt(m.age)
-      const payload: BodyMeasurementUpsert = {
-        age:         m.age         !== '' && ageRaw !== null ? Math.round(ageRaw) : null,
-        height:      m.height      !== '' ? toNum(m.height)      : null,
-        shoulder:    m.shoulder    !== '' ? toNum(m.shoulder)    : null,
-        chest:       m.chest       !== '' ? toNum(m.chest)       : null,
-        waist:       m.waist       !== '' ? toNum(m.waist)       : null,
-        hip:         m.hip         !== '' ? toNum(m.hip)         : null,
-        bicep:       m.bicep       !== '' ? toNum(m.bicep)       : null,
-        forearm:     m.forearm     !== '' ? toNum(m.forearm)     : null,
-        calf:        m.calf        !== '' ? toNum(m.calf)        : null,
-        thigh:       m.thigh       !== '' ? toNum(m.thigh)       : null,
-        body_weight: m.body_weight !== '' ? toNum(m.body_weight) : null,
+      if (premium.body_tracking) {
+        const ageRaw = toInt(m.age)
+        const payload: BodyMeasurementUpsert = {
+          age:         m.age         !== '' && ageRaw !== null ? Math.round(ageRaw) : null,
+          height:      m.height      !== '' ? toNum(m.height)      : null,
+          shoulder:    m.shoulder    !== '' ? toNum(m.shoulder)    : null,
+          chest:       m.chest       !== '' ? toNum(m.chest)       : null,
+          waist:       m.waist       !== '' ? toNum(m.waist)       : null,
+          hip:         m.hip         !== '' ? toNum(m.hip)         : null,
+          bicep:       m.bicep       !== '' ? toNum(m.bicep)       : null,
+          forearm:     m.forearm     !== '' ? toNum(m.forearm)     : null,
+          calf:        m.calf        !== '' ? toNum(m.calf)        : null,
+          thigh:       m.thigh       !== '' ? toNum(m.thigh)       : null,
+          body_weight: m.body_weight !== '' ? toNum(m.body_weight) : null,
+        }
+        await upsertMeasurements(member.id, payload)
       }
-      await upsertMeasurements(member.id, payload)
 
       onUpdated()   // ← void, no payload — avoids [object Object]
       setSaved(true)
@@ -266,40 +272,42 @@ export default function MemberInfo({ member, onUpdated }: Props) {
         </div>
       </Section>
 
-      {/* ── 2. Medidas corporales ────────────────────────────────────── */}
-      <Section title="Medidas corporales">
-        {loadingM ? (
-          <p className="text-xs text-gray-600">Cargando...</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {([
-              ['age',         'Edad',         'años', false],
-              ['height',      'Altura',        'cm',  true],
-              ['body_weight', 'Peso corporal', 'kg',  true],
-              ['shoulder',    'Hombro',        'cm',  true],
-              ['chest',       'Pecho',         'cm',  true],
-              ['waist',       'Cintura',       'cm',  true],
-              ['hip',         'Cola',          'cm',  true],
-              ['bicep',       'Bíceps',        'cm',  true],
-              ['forearm',     'Antebrazo',     'cm',  true],
-              ['calf',        'Pantorrilla',   'cm',  true],
-              ['thigh',       'Pierna',        'cm',  true],
-            ] as [string, string, string, boolean][]).map(([key, label, unit]) => (
-              <div key={key} className="space-y-1">
-                <Field
-                  label={label}
-                  value={m[key]}
-                  onChange={setField(key)}
-                  type="number"
-                  unit={unit}
-                  error={!!errors[key]}
-                />
-                {errors[key] && <p className="text-red-400 text-xs">{errors[key]}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
+      {/* ── 2. Medidas corporales — visible solo si módulo activo ──────── */}
+      {premium.body_tracking && (
+        <Section title="Medidas corporales">
+          {loadingM ? (
+            <p className="text-xs text-gray-600">Cargando...</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['age',         'Edad',         'años', false],
+                ['height',      'Altura',        'cm',  true],
+                ['body_weight', 'Peso corporal', 'kg',  true],
+                ['shoulder',    'Hombro',        'cm',  true],
+                ['chest',       'Pecho',         'cm',  true],
+                ['waist',       'Cintura',       'cm',  true],
+                ['hip',         'Cola',          'cm',  true],
+                ['bicep',       'Bíceps',        'cm',  true],
+                ['forearm',     'Antebrazo',     'cm',  true],
+                ['calf',        'Pantorrilla',   'cm',  true],
+                ['thigh',       'Pierna',        'cm',  true],
+              ] as [string, string, string, boolean][]).map(([key, label, unit]) => (
+                <div key={key} className="space-y-1">
+                  <Field
+                    label={label}
+                    value={m[key]}
+                    onChange={setField(key)}
+                    type="number"
+                    unit={unit}
+                    error={!!errors[key]}
+                  />
+                  {errors[key] && <p className="text-red-400 text-xs">{errors[key]}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
 
       {/* ── errors / save ────────────────────────────────────────────── */}
       {errors._global && (

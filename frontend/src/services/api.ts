@@ -351,3 +351,6 @@ export const upsertMeasurements = (memberId: number, data: import('../types').Bo
     method: 'PUT',
     body: JSON.stringify(data),
   })
+
+export const getFeatures = () =>
+  req<import('../types').FeaturesResponse>('/config/features').catch((): null => null)
