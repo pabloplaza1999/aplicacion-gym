@@ -89,6 +89,65 @@ Verificar que el `.zip` abre correctamente y contiene todos los archivos esperad
 
 ---
 
+## Primera entrega a cliente con proyecto de desarrollo
+
+Aplica cuando el cliente tiene actualmente la carpeta de desarrollo completa
+(`backend/`, `frontend/`, `.git/`, etc.) en lugar del kit de distribución.
+Este es el procedimiento de transición al modelo kit.
+
+### En la máquina del publicador
+
+**1.** Construir y exportar las imágenes (seguir los pasos 1–4 de esta guía).
+
+**2.** Armar el kit en una carpeta limpia (`rhinopower-kit-v1.0/`) con la
+estructura indicada arriba.
+
+**3.** Copiar el `.env` actual del cliente (o pedirle que lo comparta) para
+verificar que tiene `JWT_SECRET_KEY` y `ADMIN_INITIAL_PASSWORD`. Si no las
+tiene, generarlas y agregarlas antes de entregarlo.
+
+**4.** Entregar el kit al cliente por USB o zip — **no por `git pull`**.
+A partir de F3 el cliente deja de usar git y recibe kits empaquetados.
+
+### En el equipo del gimnasio
+
+**1.** Crear una carpeta nueva, por ejemplo `C:\Rhinopower\`, y copiar allí
+el contenido del kit.
+
+**2.** Copiar el archivo `.env` actual a esa carpeta (o crear uno nuevo desde
+`.env.example` con los valores correctos).
+
+**3.** Ejecutar **`load-images.bat`** — carga las imágenes desde los `.tar`
+sin necesidad de internet ni compilación.
+
+**4.** Ejecutar **`upgrade.bat`** — detecta el volumen anterior
+`aplicacion-gym_db-data`, migra todos los datos a `rhinopower_db-data`,
+valida que `gym.db` quedó íntegro y solo entonces arranca el sistema.
+
+> `upgrade.bat` busca el volumen por nombre, no por directorio. Funciona
+> aunque el kit esté en una carpeta diferente a la del proyecto original.
+
+**5.** Verificar en `http://localhost` que el sistema abre y los datos
+históricos están completos.
+
+**6.** Una vez confirmado: la carpeta del proyecto de desarrollo anterior
+(`aplicacion-gym/`) puede archivarse o eliminarse. Ya no es necesaria.
+
+> El volumen `aplicacion-gym_db-data` permanece intacto en Docker como
+> respaldo hasta que el cliente decida eliminarlo explícitamente.
+
+### Checklist de transición
+
+- [ ] Kit preparado y `.env` configurado con variables F2
+- [ ] `load-images.bat` ejecutado sin errores
+- [ ] `upgrade.bat` ejecutado: migración + validación OK
+- [ ] Login funciona en `http://localhost`
+- [ ] Datos históricos visibles (miembros, membresías, pagos)
+- [ ] Respaldo manual creado post-transición (`backup-manual.bat`)
+- [ ] Carpeta de desarrollo anterior archivada o eliminada
+
+---
+
 ## Actualización de versión (v1.0 → vX.X)
 
 1. Actualizar el tag en `docker-compose.yml`: `image: rhinopower/backend:X.X` y `image: rhinopower/frontend:X.X`.
