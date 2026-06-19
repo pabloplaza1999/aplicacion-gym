@@ -4,6 +4,7 @@ from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 
+from app.repositories.member_repository import MemberRepository
 from app.repositories.product_repository import ProductRepository
 from app.repositories.inventory_repository import InventoryRepository
 from app.repositories.sale_repository import SaleRepository
@@ -26,6 +27,7 @@ class CannotCancelPartialSaleError(ValueError):
 class SaleService:
 
     def __init__(self, db: Session):
+        self.member_repo = MemberRepository(db)
         self.product_repo = ProductRepository(db)
         self.inventory_repo = InventoryRepository(db)
         self.sale_repo = SaleRepository(db)
@@ -70,6 +72,10 @@ class SaleService:
     def create_sale(self, data: SaleCreate) -> SaleRead:
         if data.payment_type == "credit" and not data.customer_id:
             raise ValueError("Las ventas a crédito requieren un cliente.")
+
+        if data.customer_id:
+            if not self.member_repo.get_by_id(data.customer_id):
+                raise ValueError("Cliente no encontrado.")
 
         products = []
         for item in data.items:

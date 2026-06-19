@@ -1,6 +1,8 @@
 import logging
 import sys
+from collections import defaultdict
 from pathlib import Path
+from time import time
 
 # Add backend directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -20,6 +22,12 @@ from app.api.routes import (
 )
 
 logger = logging.getLogger(__name__)
+
+# In-memory sliding-window state for login rate limiting.
+# Keyed by client IP; value = list of request timestamps within the current window.
+# Reset on container restart — acceptable for single-PC Local Edition.
+# Memory is bounded: one entry per unique IP × max_attempts timestamps.
+_login_attempts: defaultdict[str, list[float]] = defaultdict(list)
 
 
 def create_app() -> FastAPI:
@@ -44,6 +52,41 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+    # TD-42: sliding-window rate limiter for POST /api/auth/login.
+    # Disabled in debug mode (development). Applies only to the login endpoint;
+    # all other paths — including /api/health — pass through unconditionally.
+    # The 429 response traverses CORSMiddleware on its way out, so CORS headers
+    # are present even when the request is rejected.
+    @app.middleware("http")
+    async def _login_rate_limiter(request: Request, call_next):
+        if (
+            not settings.debug
+            and request.method == "POST"
+            and request.url.path == "/api/auth/login"
+        ):
+            ip = request.client.host or "unknown"
+            now = time()
+            window = settings.login_rate_limit_window
+            max_attempts = settings.login_rate_limit_max_attempts
+
+            # Discard timestamps outside the current window on every request —
+            # keeps memory usage bounded without a background cleanup task.
+            _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < window]
+
+            if len(_login_attempts[ip]) >= max_attempts:
+                logger.warning(
+                    "Rate limit exceeded on /api/auth/login | ip=%s attempts=%d window=%ds",
+                    ip, len(_login_attempts[ip]), window,
+                )
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Demasiados intentos. Intenta nuevamente en un momento."},
+                )
+
+            _login_attempts[ip].append(now)
+
+        return await call_next(request)
 
     # Database startup event
     @app.on_event("startup")

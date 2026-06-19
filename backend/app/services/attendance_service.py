@@ -8,6 +8,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.config import BOGOTA_OFFSET
 from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.member_repository import MemberRepository
 from app.repositories.membership_repository import MembershipRepository
@@ -60,9 +61,9 @@ class AttendanceService:
         """Register an attendance, consuming one voucher entry."""
         member, membership, plan = self._resolve_voucher(document)
         now = datetime.utcnow()
-        today = now.date()
+        today = (now + BOGOTA_OFFSET).date()
 
-        # 1) Vigencia
+        # 1) Vigencia (UTC datetime comparison — end_date stored in UTC)
         if membership.end_date < now:
             raise CheckInError(409, "La valera está vencida")
 
@@ -119,6 +120,8 @@ class AttendanceService:
             entries_used=used,
             entries_remaining=remaining,
             end_date=membership.end_date,
-            attended_today=self.attendance_repo.exists_for_membership_on_date(membership.id, now.date()),
+            attended_today=self.attendance_repo.exists_for_membership_on_date(
+                membership.id, (now + BOGOTA_OFFSET).date()
+            ),
             finished=finished,
         )

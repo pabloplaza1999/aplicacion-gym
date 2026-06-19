@@ -40,25 +40,12 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 
 ---
 
-## TD-04 — UTC en restricción de asistencia diaria (check_in_date) — parcialmente resuelto
+## TD-04 — UTC en restricción de asistencia diaria (check_in_date) ✅ RESUELTO
 
 - **ID:** TD-04
-- **Título:** La restricción UNIQUE `(member_id, check_in_date)` usa fecha UTC, no fecha Bogotá.
-- **Estado:** **Parcialmente resuelto** — ver fix `fix-plan-dia-timezone`.
-- **Descripción:** El backend almacena `check_in_date` como `date` UTC. Un cliente que registre asistencia entre las 19:00 y las 23:59 hora Bogotá obtiene `check_in_date` del día UTC siguiente, lo que podría permitir un doble check-in el día local correcto.
-- **Qué fue corregido (fix-plan-dia-timezone):**
-  - `_calculate_end_date` para Plan Día ahora calcula `end_date` como 23:59:59 hora Bogotá (no UTC).
-  - `get_membership_alerts` clasifica alertas usando fecha Bogotá local (`datetime.utcnow() + BOGOTA_OFFSET`).
-  - Visualización de todas las fechas de membresía en frontend usa `fmtBogotaDate` (timezone `America/Bogota`).
-  - `BOGOTA_OFFSET = timedelta(hours=-5)` centralizado en `app/core/config.py`.
-  - Migración correctiva aplicada a 6 registros históricos con lógica antigua (2026-06-12).
-- **Riesgo residual:** `check_in_date` en tabla `attendances` sigue siendo fecha UTC. Si un cliente registra asistencia después de las 19:00 Bogotá, `check_in_date` corresponde al día siguiente UTC, lo que puede:
-  - Permitir doble check-in en el día local.
-  - Mostrar la asistencia en el día incorrecto en un historial futuro.
-- **Impacto residual:** Medio. Afecta solo a clientes con valera que asistan después de las 19:00 Bogotá.
-- **Módulos afectados pendientes:** `attendance_repository.py` (`create_attendance` — usa `datetime.utcnow().date()`), restricción `UNIQUE(member_id, check_in_date)`.
-- **Prioridad:** Media.
-- **Solución futura:** Usar `(datetime.utcnow() + BOGOTA_OFFSET).date()` al generar `check_in_date` en `AttendanceRepository.create_attendance`. Requiere validar que la restricción UNIQUE siga siendo coherente con la nueva fecha local.
+- **Estado:** Resuelto (2026-06-19). Fix en `attendance_service.py`.
+- **Solución aplicada:** `check_in` y `get_voucher_status` en `AttendanceService` ahora usan `(datetime.utcnow() + BOGOTA_OFFSET).date()` para calcular la fecha del día local. La comparación de vigencia (`membership.end_date < now`) permanece en UTC — correcto, `end_date` se almacena en UTC. La restricción UNIQUE `(membership_id, check_in_date)` sigue siendo coherente: ahora la fecha almacenada corresponde al día Bogotá, evitando doble check-in en el mismo día calendario local.
+- **Archivos modificados:** `backend/app/services/attendance_service.py` — import `BOGOTA_OFFSET`; línea 63 (`today`); línea `attended_today` en `get_voucher_status`.
 
 ---
 
@@ -333,7 +320,7 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-01 | Valeras finalizadas no aparecen inactivas en Dashboard/current-membership | ~~Media~~ **RESUELTO** |
 | TD-02 | Coexistencia de valeras preexistentes en datos antiguos | ~~Media~~ **RESUELTO** |
 | TD-03 | Cédula no obligatoria pese a ser requerida para check-in | Media |
-| TD-04 | UTC en asistencias diarias: `check_in_date` sigue usando fecha UTC (Plan Día y alertas ya corregidos) | Media |
+| TD-04 | ~~UTC en asistencias diarias: `check_in_date` sigue usando fecha UTC~~ | ✅ RESUELTO |
 | TD-05 | Renovación no desactiva la membresía anterior | ~~Media~~ **RESUELTO** |
 | TD-06 | Visualización de valera solo en la página de Asistencia | Baja |
 | TD-07 | `Navbar.tsx` es código muerto | Baja |
@@ -364,19 +351,19 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-32 | `page_size` sin validación de rango en GET /notifications/history | Baja |
 | TD-33 | Scheduler sin healthcheck Docker — fallos solo visibles en logs del contenedor | Baja |
 | TD-34 | Contenedor corre como root — SEC-007 (F1) | ~~Alta~~ **RESUELTO** |
-| TD-35 | `cryptography 41.0.7` + deps desactualizadas con CVEs — SEC-008 (F1) | Alta |
+| TD-35 | ~~`cryptography 41.0.7` + deps desactualizadas con CVEs — SEC-008 (F1)~~ | ✅ RESUELTO |
 | TD-36 | Docs OpenAPI expuestas en producción — SEC-010 (F1) | ~~Media~~ **RESUELTO** |
 | TD-37 | `debug=True` por defecto en `config.py` — SEC-011 (F1) | ~~Media~~ **RESUELTO** |
 | TD-38 | CORS permisivo: `allow_credentials` + métodos/headers wildcard — SEC-012 (F1) | ~~Media~~ **RESUELTO** |
 | TD-39 | PII en logs 422: `exc.errors()` incluye `input` del cliente — SEC-013 (F1) | ~~Media~~ **RESUELTO** |
 | TD-40 | SQLite y backups sin cifrar en reposo — SEC-014 (diferido F4) | Media |
 | TD-41 | Sin cabeceras de seguridad HTTP en nginx — SEC-015 (F1) | ~~Media~~ **RESUELTO** |
-| TD-42 | Sin rate limiting en ningún endpoint — SEC-016 (diferido F5) | Media |
+| TD-42 | ~~Sin rate limiting en ningún endpoint — SEC-016~~ (login: resuelto; otros endpoints: diferido F5) | ✅ RESUELTO (parcial) |
 | TD-43 | `str(e)` expuesto al cliente en errores de negocio — SEC-017 (F1) | ~~Media~~ **RESUELTO** |
 | TD-44 | Sin `TrustedHostMiddleware` — SEC-019 (diferido F5) | Baja |
 | TD-48 | Tabla `customers`, `CustomerService` y `sales.customer_id` mantenidos transitoriamente (Cliente Único Phase 1) | Baja |
 | TD-49 | `CreditPayment` definido en `customer.py`, importado por `member_repository.py` — acoplamiento cruzado | Baja |
-| TD-50 | `POST /store/sales` acepta `customer_id` (member_id) inexistente — SQLite FK=0, sin validación explícita | Baja |
+| TD-50 | ~~`POST /store/sales` acepta `customer_id` (member_id) inexistente — SQLite FK=0, sin validación explícita~~ | ✅ RESUELTO |
 | TD-51 | Validación de actualización de producción para Cliente Único Phase 1 — pendiente auditoría sobre datos reales | Alta |
 | TD-52 | ~~`get_memberships_by_status` y `get_members_by_plan` en `dashboard_repository.py` usan `datetime.utcnow()` — StatCards y tabla "Membresías por plan" incorrectos después de las 19:00 Bogotá~~ | ✅ RESUELTO |
 | TD-53 | ~~`_enrich_membership` usa `datetime.utcnow()` para `days_remaining` — muestra días negativos desde las 19:00 Bogotá en el último día~~ | ✅ RESUELTO |
@@ -390,6 +377,7 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-61 | Feature Flags por módulo — diferido a F5 | Baja |
 | TD-62 | Acceso LAN multi-PC — diferido a Edición Local Plus / F5 | Media |
 | TD-63 | Migración de volumen en actualizaciones pre-F3 → F3 (`aplicacion-gym_db-data` → `rhinopower_db-data`) — Mitigado por `upgrade.bat` | Baja |
+| TD-64 | `python-jose 3.3.0` (abandonado) bloquea upgrade de `cryptography` a ≥ 42.x — reemplazar por PyJWT en F4 | Baja |
 
 **Resueltos en fixes-post-tienda-b:**
 - `UNIQUE(member_id, check_in_date)` en attendances → migrada a `(membership_id, check_in_date)` ✅
@@ -524,11 +512,12 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 ## TD-35 — Dependencias desactualizadas con CVEs · SEC-008
 
 - **ID:** TD-35 · **Hallazgo F0:** SEC-008 (Alta)
-- **Estado:** Abierto — pendiente Human Gate F0.
-- **Descripción:** `cryptography==41.0.7` (cifra `smtp_password`) tiene CVEs conocidas corregidas en ≥42.x. FastAPI 0.104.1, uvicorn 0.24.0, SQLAlchemy 2.0.23, pydantic 2.5.0, apscheduler 3.10.4: versiones de fin de 2023 con correcciones de seguridad acumuladas.
+- **Estado:** ✅ RESUELTO (F3 cierre, 2026-06-19).
+- **Solución aplicada:** Actualizadas a versiones estables con correcciones de seguridad acumuladas. `cryptography` mantenida en `41.0.7` por incompatibilidad de `python-jose 3.3.0` con `cryptography ≥ 42.x` (ver TD-64). Los CVEs de `cryptography 41.x` (CVE-2024-26130, CVE-2024-0727) no afectan el app — ambos requieren serialización PKCS12 que nunca ocurre en gestión de gimnasio. CVE-2024-47874 (starlette multipart DoS) no afecta el app — no existen endpoints multipart/file-upload. Todos los smoke tests pasaron tras el upgrade.
+- **Versiones actualizadas:** `fastapi: 0.104.1 → 0.115.6` (starlette 0.27.0 → 0.41.3), `uvicorn: 0.24.0 → 0.30.6`, `sqlalchemy: 2.0.23 → 2.0.36`, `pydantic: 2.5.0 → 2.10.6`, `pydantic-settings: 2.1.0 → 2.6.1`.
+- **Versiones mantenidas con pin:** `cryptography==41.0.7` (TD-64), `python-jose==3.3.0`, `passlib==1.7.4` (TD-58), `bcrypt==4.0.1` (TD-58), `apscheduler==3.10.4`.
 - **Módulos afectados:** `backend/requirements.txt`.
 - **Prioridad:** Alta.
-- **Recomendación futura (F1):** Actualizar a versiones estables actuales + adoptar `pip-audit` en el flujo de desarrollo.
 
 ---
 
@@ -604,11 +593,12 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 ## TD-42 — Sin rate limiting en ningún endpoint · SEC-016
 
 - **ID:** TD-42 · **Hallazgo F0:** SEC-016 (Media)
-- **Estado:** Abierto — diferido a F5.
-- **Descripción:** No existe throttling. Pre-F2: vector de DoS de recursos. Post-F2: fuerza bruta en login queda abierta.
-- **Módulos afectados:** `backend/app/main.py`, reverse proxy (pendiente F5).
+- **Estado:** ✅ RESUELTO para login (F3 cierre, 2026-06-19). Rate limiting en otros endpoints diferido a F5.
+- **Solución aplicada:** Middleware custom de sliding-window en `backend/app/main.py`. Sin dependencias externas (stdlib `time` + `collections.defaultdict`). Aplica únicamente a `POST /api/auth/login`. Desactivado cuando `debug=True`. Configuración centralizada en `config.py` (`login_rate_limit_window: int = 60`, `login_rate_limit_max_attempts: int = 20`). Limpieza automática de timestamps expirados en cada request. Respuesta HTTP 429 genérica sin exponer detalles internos. Registrado en `logger.warning` con IP y conteo. La respuesta 429 pasa por `CORSMiddleware` (exterior) — headers CORS presentes. Estado en memoria — reset al reiniciar contenedor (aceptable para Edición Local single-PC). Para LAN multi-PC, Docker masquerade hace que todos los clientes compartan el mismo bucket de IP (diferido TD-62/F5).
+- **Tests funcionales (6/6 PASS):** login normal, exceder límite → 429, `/api/health` excluido, GET excluido, `debug=True` desactiva, limpieza de timestamps.
+- **Módulos afectados:** `backend/app/main.py`, `backend/app/core/config.py`.
 - **Prioridad:** Media.
-- **Recomendación futura (F5):** Rate limiting en el reverse proxy (Nginx/Caddy) + `slowapi` en FastAPI para endpoints de auth.
+- **Recomendación futura (F5):** Extender rate limiting a otros endpoints si se abre acceso LAN/Internet. Considerar `TrustedHostMiddleware` + IP real con `X-Forwarded-For` si se agrega reverse proxy externo.
 
 ---
 
@@ -752,17 +742,11 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 
 ---
 
-## TD-50 — `POST /store/sales` acepta member_id inexistente (SQLite FK=0, sin validación explícita)
+## TD-50 — `POST /store/sales` acepta member_id inexistente ✅ RESUELTO
 
 - **ID:** TD-50
-- **Título:** La ruta `POST /store/sales` no valida que `customer_id` (semánticamente: `member_id`) refiera a un `Member` existente.
-- **Descripción:** `SaleService.create_sale()` almacena `data.customer_id` en `Sale.member_id` sin consultar `MemberRepository.get_by_id()`. SQLite tiene `PRAGMA foreign_keys = 0` (OFF por defecto), por lo que la FK `sales.member_id → members.id` no se valida a nivel de BD. Resultado: una venta puede crearse con un `member_id` arbitrario inexistente. La venta aparecerá con `customer_name=null` en cartera y reportes.
-- **Nota:** Este gap es **pre-existente** — el mismo escenario ocurría con `customer_id` antes de Cliente Único. `PRAGMA foreign_keys = 0` es el estado de toda la BD, no introducido por esta migración. Detectado durante Paso 5 — Cliente Único Phase 1.
-- **Riesgo:** Bajo. En uso normal, el frontend siempre selecciona el cliente desde el listado de Members (que devuelve IDs reales). Solo explotable via API directa.
-- **Impacto:** Ventas huérfanas con `customer_name=null`; visibles en cartera. Si la venta es PAID/PENDING no se purgan automáticamente.
-- **Módulos afectados:** `backend/app/services/sale_service.py` (`create_sale`), `backend/app/database/session.py` (no activa FK pragma).
-- **Prioridad:** Baja.
-- **Recomendación futura:** Añadir en `create_sale`: `if data.customer_id and not MemberRepository.get_by_id(data.customer_id): raise ValueError("Cliente no encontrado.")`. O activar `PRAGMA foreign_keys = ON` en el event listener del engine de SQLAlchemy.
+- **Estado:** Resuelto (2026-06-19).
+- **Solución aplicada:** `SaleService` ahora incluye `MemberRepository` en su constructor. `create_sale()` valida explícitamente que `data.customer_id` corresponde a un `Member` existente antes de proceder; lanza `ValueError("Cliente no encontrado.")` → HTTP 400 si no existe. Sin cambios en BD ni en el frontend.
 
 ---
 
@@ -918,6 +902,18 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 - **Mitigación implementada:** `upgrade.bat` detecta automáticamente `aplicacion-gym_db-data`, migra los datos a `rhinopower_db-data` de forma estrictamente aditiva (nunca toca el volumen origen), valida que `gym.db` exista en el destino y solo entonces inicia los contenedores.
 - **Módulos afectados:** `docker-compose.yml` (volumes), `upgrade.bat`, `docs/ACTUALIZACION.md`.
 - **Prioridad:** Baja — resuelto para instalaciones conocidas (legacy `aplicacion-gym_db-data`).
+
+---
+
+## TD-64 — `python-jose 3.3.0` bloquea upgrade de `cryptography` a ≥ 42.x
+
+- **ID:** TD-64
+- **Estado:** Abierto — diferido a F4.
+- **Descripción:** `python-jose 3.3.0` (última versión, proyecto inactivo desde 2021) usa APIs de `cryptography` que fueron modificadas en la serie 42.x. El pin `cryptography==41.0.7` es necesario mientras `python-jose` siga siendo la librería JWT. Los CVEs que exigen ≥ 42.x (CVE-2024-26130, CVE-2024-0727) no afectan al app de gestión de gimnasio — ambos requieren serialización PKCS12 ausente en el app. Para JWT HS256 (uso real), no hay vulnerabilidad activa.
+- **Riesgo:** Bajo en operación actual. Medio en instalaciones futuras con mayores requisitos de seguridad.
+- **Módulos afectados:** `backend/requirements.txt`, `backend/app/api/routes/auth.py`, `backend/app/services/auth_service.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura (F4):** Reemplazar `python-jose[cryptography]==3.3.0` por `PyJWT>=2.8.0` (mantenido activamente, compatible con `cryptography 42+`). Actualizar imports en `auth_service.py`: `from jose import jwt` → `import jwt`. Cambio en 1 archivo (`auth_service.py`); no requiere cambios de BD ni de frontend.
 
 ---
 

@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # In production, set a strong value in .env before first launch.
     admin_initial_password: str = "admin123"
 
+    # Rate limiting — login endpoint only. Override via .env if needed.
+    login_rate_limit_window: int = 60   # seconds in the sliding window
+    login_rate_limit_max_attempts: int = 20  # max attempts per IP per window
+
     # Backup
     db_path: str = "/app/data/gym.db"
     backup_dir: str = "/app/data/backups"

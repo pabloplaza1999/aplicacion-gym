@@ -562,10 +562,76 @@ POST /api/auth/change-password — requiere Bearer token (allows is_temporary); 
 
 **Auditoría (Paso 6):** Aprobada con observaciones. Observaciones resueltas en Paso 7: packaging documentado (`EMPAQUETADO.md`), advertencia `down -v` en `SOPORTE.md`, migración automatizada (`upgrade.bat` + `ACTUALIZACION.md`).
 
+🔧 fix-td04-td50 **TD-04 + TD-50 — Cierre Edición Local (2026-06-19).**
+- **TD-04 resuelto:** `AttendanceService.check_in()` y `get_voucher_status()` usan `(datetime.utcnow() + BOGOTA_OFFSET).date()` para `check_in_date`. Elimina la posibilidad de doble check-in para valeras usadas después de las 19:00 hora Bogotá. La comparación de vigencia (`end_date < now`) permanece en UTC (correcto). Import de `BOGOTA_OFFSET` añadido. Sin migración de BD ni impacto en datos históricos.
+- **TD-50 resuelto:** `SaleService` incorpora `MemberRepository` en su constructor. `create_sale()` valida que `customer_id` (member_id canónico) existe antes de crear la venta; retorna HTTP 400 "Cliente no encontrado." si no. Sin cambios de esquema, frontend ni datos existentes.
+
+| Archivo | Cambio |
+|---|---|
+| `backend/app/services/attendance_service.py` | Import `BOGOTA_OFFSET`; `today` y `attended_today` usan hora Bogotá |
+| `backend/app/services/sale_service.py` | `MemberRepository` en constructor; validación explícita de `customer_id` |
+
+🔧 fix-td42-td35 **TD-42 + TD-35 — Cierre Edición Local (2026-06-19).**
+
+- **TD-42 resuelto:** Middleware de rate limiting custom para `POST /api/auth/login`. Sliding-window en memoria (`defaultdict[str, list[float]]`). Sin dependencias externas. Configuración centralizada en `config.py` (`login_rate_limit_window=60s`, `login_rate_limit_max_attempts=20`). Desactivado automáticamente cuando `debug=True`. Limpieza de timestamps expirados en cada request. Respuesta HTTP 429 genérica. Logger warning con IP y conteo. El middleware se registra ANTES de `CORSMiddleware` en el stack (índice 0 en `user_middleware`, interior tras `reversed()` del build) — la respuesta 429 pasa por CORS y tiene headers de origen. Estado en memoria, reset al reiniciar contenedor. 6/6 tests funcionales PASS.
+
+- **TD-35 resuelto (parcial):** Actualización de dependencias Python con correcciones de seguridad acumuladas. `cryptography` mantenida en 41.0.7 (python-jose 3.3.0 incompatible con ≥42.x; CVEs de 41.x no aplican al app — sin endpoints PKCS12 ni multipart). 5/6 packages actualizados; 6 smoke tests PASS post-upgrade.
+
+| Archivo | Cambio |
+|---|---|
+| `backend/app/main.py` | `_login_attempts` dict; middleware `_login_rate_limiter` (http) |
+| `backend/app/core/config.py` | `login_rate_limit_window`, `login_rate_limit_max_attempts` |
+| `backend/requirements.txt` | fastapi 0.104.1→0.115.6; uvicorn 0.24.0→0.30.6; sqlalchemy 2.0.23→2.0.36; pydantic 2.5.0→2.10.6; pydantic-settings 2.1.0→2.6.1 |
+
+**Deuda técnica generada:** TD-64 (`python-jose` bloquea `cryptography ≥42.x` — reemplazar por `PyJWT` en F4).
+
+🔧 plataforma-estrategia **Estrategia de Plataforma y Documentación Fundacional (2026-06-19).**
+Sin cambios de código. Sesión de definición de producto y arquitectura de plataforma.
+
+**Decisión aprobada:** Rhinopower pasa a ser el primer cliente de la plataforma, no el producto. El sistema evoluciona hacia una plataforma transversal multi-gimnasio denominada **gym-platform**.
+
+**Decisiones de arquitectura aprobadas:**
+- Repositorio único renombrado a `gym-platform` (sin repos adicionales, sin monorepo, sin ramas de larga duración)
+- Separación Core/Premium mediante estructura de directorios `backend/app/modules/`
+- Feature flags via variables de entorno (`MODULE_NOTIFICATIONS`, `MODULE_ACCESS_CONTROL`, etc.) — sin flags en base de datos
+- Endpoint público `GET /api/config/features` — expone módulos activos al frontend
+- Releases por cliente via git tags (`v1.1-local`, `v1.2-platform`, ...)
+- Modelo ISV local (Docker en PC del gimnasio) — SaaS cloud diferido a F8+ (>20 clientes)
+
+**Modelo comercial aprobado:**
+- Licencia anual de uso (no perpetua, no SaaS mensual)
+- Plan Starter $1.8M · Professional $4.2M · Premium $8.4M COP/año
+- 9 módulos Premium como add-ons independientes (P-01 a P-09)
+- Servicios profesionales por separado (implementación, migración, hardware)
+
+**Documentación fundacional generada:**
+| Documento | Contenido |
+|---|---|
+| `PRODUCT_VISION.md` | Visión, misión, mercado, propuesta de valor, principios |
+| `PRODUCT_ROADMAP.md` | Roadmap 24m: F4 Platform Ready → F7 Intelligence |
+| `PRODUCT_MODULES.md` | Catálogo completo: 7 Core + 9 Premium con flags, precios y dependencias |
+| `LICENSING_STRATEGY.md` | Planes, add-ons, servicios, upsell, renovación, LTV y ARR proyectado |
+| `PLATFORM_ARCHITECTURE.md` | Decisiones de arquitectura, ISV model, feature flags, Core/Premium separation |
+
+**Roadmap aprobado (24 meses):**
+- F4 Platform Ready (M1–6): feature flags, 2° cliente, P-01 Comunicación, P-07 Seguimiento, PyJWT migration
+- F5 Premium Edition (M7–12): P-02 Cobros, P-03 Web, P-04 Acceso SW, P-08 Analítica
+- F6 Digital & Access (M13–18): P-06 App Móvil, P-05 Hardware, P-08 Avanzada
+- F7 Intelligence (M19–24): P-09 IA Predictiva, API pública
+
 ## Próximo paso
 
 ### Actividades operativas pendientes (no son deuda de código)
-- **Deploy producción — Cliente Único Phase 1** (TD-51, Alta): ejecutar checklist Paso 5.5 sobre la instalación real del gimnasio antes de hacer `docker compose build backend`. Verificar V1–V4 sobre datos reales de `customers`, `sales` y `members`.
+- **Deploy producción — Cliente Único Phase 1** (TD-51, Alta): ejecutar checklist Paso 5.5 sobre la instalación real del gimnasio antes de hacer `docker compose build backend`. Verificar V1–V4 sobre datos reales de `customers`, `sales` y `members`. **DESBLOQUEADO** — TD-04, TD-50, TD-42 y TD-35 completados.
+
+### Estado de cierre Edición Local
+```
+✅ TD-04  check_in_date Bogotá — resuelto
+✅ TD-50  validación FK create_sale — resuelto
+✅ TD-42  rate limiting login custom middleware — resuelto (6/6 PASS)
+✅ TD-35  actualización deps CVEs — resuelto (cryptography pin justificado → TD-64)
+🔒 TD-51  deploy producción — DESBLOQUEADO, pendiente ejecución
+```
 
 ### Backlog funcional
 - **f2-auth-staff:** ✅ Completado (2026-06-19). JWT stateless, usuario admin único, flujo temporal/permanente, protección global via deps.py. Validado en Docker Compose. Ciclo completo Paso 1→7. Aprobado con observaciones (TD-58/59/60 registrados).
@@ -574,7 +640,8 @@ POST /api/auth/change-password — requiere Bearer token (allows is_temporary); 
 - **F1 Bloque B:** ✅ Completado (2026-06-18). SEC-010/012/015/017 resueltos.
 - **TD-46:** ✅ Completado (2026-06-18). `_calculate_status` corregido a hora Bogotá.
 - **TD-52/53/54:** ✅ Completado (2026-06-18). Normalización zona horaria Bogotá en Dashboard y MembershipService — 5 líneas en 2 archivos.
-- **TD-35 (SEC-008):** Dependencias con CVEs — iniciativa separada, pendiente de aprobación.
+- **TD-35 (SEC-008):** ✅ Completado (2026-06-19). Dependencias actualizadas; cryptography 41.0.7 pinned (TD-64).
+- **TD-42 (SEC-016):** ✅ Completado (2026-06-19). Rate limiting custom en login; otros endpoints diferidos a F5.
 - **Notificaciones Fase 3:** canales adicionales (WhatsApp/SMS) o plantillas personalizables.
 - **Tienda Fase D:** exportación de reportes o mejoras operativas.
 - **Cliente Único Phase 2:** actualizar frontend para usar `member_id` directamente; eliminar tabla `customers`, `CustomerService` y columna `sales.customer_id` (prerrequisito: mover `CreditPayment` a su propio módulo — TD-49).
