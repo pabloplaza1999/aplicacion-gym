@@ -31,6 +31,7 @@ GET/POST /api/members | GET/PUT/DELETE /api/members/{id}
 POST /api/members/{id}/memberships | GET /api/members/{id}/memberships
 GET /api/members/{id}/current-membership | POST /api/members/memberships/{id}/renew
 PATCH /api/members/memberships/{id}/active (activar/desactivar manual)
+PATCH /api/members/memberships/{id}/start-date (corregir fecha inicio + auditoría)
 GET /api/members/{id}/active-voucher-warning
 
 ### Pagos
@@ -356,17 +357,192 @@ POST /api/notifications/run — ejecuta ciclo manualmente
 | `backend/app/services/membership_service.py` | Línea 151 (`_has_active_valid_voucher`): `now = datetime.utcnow() + BOGOTA_OFFSET` |
 | `backend/app/services/membership_service.py` | Línea 170 (`get_active_voucher_warning`): `now = datetime.utcnow() + BOGOTA_OFFSET` |
 
+🔧 fix-normalize-date-str `normalizeDateStr()` en `validators.ts` interpretaba todos los naive datetimes como hora Bogotá (append `-05:00`), cuando los datetimes con componente de hora (`T`) son UTC naives devueltos por la API. Consecuencia: Plan Día `end_date = "2026-06-19T04:59:59"` (UTC) se mostraba como `19/06/2026` en lugar de `18/06/2026`. Fix: split en dos ramas — strings con `T` → append `Z` (UTC real); date-only → append `T00:00:00-05:00` (fecha Bogotá, sin cambio). Backend y BD correctos en todo momento. Cambio de 2 líneas; sin impacto histórico. Corrige también el display de membresías mensuales creadas después de las 19:00 Bogotá (mostraban día UTC+1 en lugar del día Bogotá correcto).
+
+| Archivo | Cambio |
+|---|---|
+| `frontend/src/utils/validators.ts` | `normalizeDateStr`: rama `T` → append `Z`; date-only → append `T00:00:00-05:00` |
+
+🔧 correct-start-date **Corrección de fecha de inicio de membresía.** Permite corregir la `start_date` de una membresía que fue registrada con fecha incorrecta o tardíamente, recalculando `end_date` de forma automática. Registra auditoría inmutable en tabla dedicada. Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditado · Aprobado** (Paso 5 PASS · Paso 5.5 PASS sin impacto histórico · Paso 6 auditoría Aprobada con observaciones).
+
+**Reglas de negocio clave:**
+- Solo membresías activas (`active`/`expiring`) o congeladas (`frozen`) son corregibles.
+- Membresías vencidas, manualmente desactivadas o con asistencias registradas no son corregibles.
+- `new_start_date` no puede ser futura.
+- La corrección no puede producir `end_date` en el pasado ni solaparse con otra membresía activa del mismo cliente.
+- Para membresías congeladas: `new_end_date` debe ser posterior a `frozen_at`; `frozen_days_remaining` se recalcula.
+- Motivo obligatorio (mínimo 10 caracteres); múltiples correcciones permitidas (auditoría completa).
+
+**Backend:** nueva tabla `membership_correction_logs` (auditoría inmutable). `MembershipCorrectionRepository.create()` + `get_latest_for_membership()`. `MembershipRepository.get_active_overlapping()` + `correct_start_date_no_commit()`. `MembershipService.correct_start_date()`. Atomicidad: flush auditoría → flush membresía → un único commit. `MembershipRead` expone `last_correction_at` y `last_correction_reason` (None para listados — sin N+1).
+
+**Frontend:** `StartDateCorrectionModal` (fecha actual de referencia, date input con max = hoy en Bogotá, textarea motivo ≥10 chars). Botón "Corregir fecha de inicio" visible en tab Membresía cuando `status ∈ {active, expiring, frozen}`. `correctMembershipStartDate()` en `api.ts`.
+
+### Endpoints nuevos (correct-start-date)
+PATCH /api/members/memberships/{id}/start-date — corrige start_date; recalcula end_date y frozen_days_remaining; registra auditoría atómica
+
+### Archivos nuevos (correct-start-date)
+| Archivo | Descripción |
+|---|---|
+| `backend/app/models/membership_correction.py` | Modelo `MembershipCorrectionLog` |
+| `backend/app/schemas/membership_correction.py` | `MembershipStartDateCorrectionCreate` (new_start_date, reason) |
+| `backend/app/repositories/membership_correction_repository.py` | create + get_latest_for_membership |
+| `frontend/src/components/StartDateCorrectionModal.tsx` | Modal de corrección con validación |
+
+### Archivos modificados (correct-start-date)
+| Archivo | Cambio |
+|---|---|
+| `backend/app/schemas/membership.py` | `MembershipRead` + `last_correction_at`, `last_correction_reason` |
+| `backend/app/repositories/membership_repository.py` | `get_active_overlapping`, `correct_start_date_no_commit` |
+| `backend/app/services/membership_service.py` | `MembershipCorrectionError`, `correct_start_date()`, `_enrich_membership` con auditoría |
+| `backend/app/api/routes/memberships.py` | PATCH `/memberships/{id}/start-date` (antes del GET dinámico) |
+| `backend/app/database/init_db.py` | Import `MembershipCorrectionLog` para `create_all` |
+| `backend/app/models/__init__.py` | Export `MembershipCorrectionLog` |
+| `frontend/src/types/index.ts` | `Membership` + `last_correction_at/reason`; `MembershipStartDateCorrectionCreate` |
+| `frontend/src/services/api.ts` | `correctMembershipStartDate()` |
+| `frontend/src/pages/Members.tsx` | Import modal, estado `showCorrectionModal`, botón condicional, render modal |
+
+**Deuda técnica generada:** TD-55 (`corrected_by` diferido a F2), TD-56 (GET historial de correcciones diferido), TD-57 (índice compuesto `(membership_id, corrected_at)` en `membership_correction_logs` diferido).
+
+🔧 f2-auth-staff **F2 — Autenticación JWT para el operador del gimnasio.** Un único usuario admin, JWT stateless, sin roles múltiples. Diseñado para uso local por un solo operador.
+
+**Decisiones de arquitectura:**
+- `JWT_SECRET_KEY` independiente de `SECRET_KEY` (Fernet/SMTP) — ciclos de rotación distintos.
+- Token almacenado en `localStorage` (justificación: CORS `allow_credentials=False` de F1 Bloque B hace inviable httpOnly cookie sin revertir hardening).
+- Dos dependencias FastAPI: `get_current_user` (permite `is_temporary`) y `require_active_user` (bloquea `is_temporary` → 403). Cero cambios en los 11 routers existentes.
+- Protección global en `main.py` via `_protected = {"dependencies": [Depends(require_active_user)]}` aplicado a cada `include_router`.
+- Contraseña inicial via `ADMIN_INITIAL_PASSWORD` env var (no hardcodeada en logs).
+- Reset admin: `UPDATE` sobre usuario existente (A1 — no DELETE+seed), via `scripts/reset_admin.py`.
+- `change-password` devuelve `TokenResponse` fresco (`is_temporary=False`) — sin re-login.
+- `bcrypt==4.0.1` anclado explícitamente en `requirements.txt` (passlib 1.7.4 incompatible con bcrypt 5.x).
+
+**Flujos cubiertos:**
+1. Login → recibe token JWT con `is_temporary`. Si temporal: redirige a `/change-password` bloqueando todo acceso al resto de la app. Si no temporal: accede normalmente.
+2. Cambio de contraseña en primer login → recibe token fresco con `is_temporary=False` → sin re-login.
+3. Sesión expirada (401 en cualquier ruta) → redirige a `/login?expired=1` con banner informativo.
+4. Logout → limpia `localStorage` → redirige a `/login`.
+
+**Excepciones de protección de rutas:**
+- Públicas: `POST /api/auth/login`, `GET /api/health`, `GET /`.
+- Token válido (permite `is_temporary`): `POST /api/auth/change-password`.
+- Token válido + no temporal: todos los demás endpoints.
+
+**Validación producción extendida:** `model_validator` en `config.py` valida `JWT_SECRET_KEY` (no vacía, no igual al default dev) y `ADMIN_INITIAL_PASSWORD` (no vacía) cuando `DEBUG=False`.
+
+**Entorno oficial de despliegue:** Docker Compose. Las validaciones finales de F2 se ejecutaron sobre el stack Docker (`docker compose up --build`). El modo `INICIAR.bat` / uvicorn+npm solo es válido para desarrollo y depuración local.
+
+---
+
+### Procedimiento de primer acceso (f2-auth-staff)
+
+1. Asegurarse de que `.env` contenga `ADMIN_INITIAL_PASSWORD` (contraseña inicial del operador).
+2. Levantar el stack: `docker compose up --build -d`.
+3. Abrir `http://localhost` en el navegador.
+4. Iniciar sesión con usuario `admin` y la contraseña definida en `ADMIN_INITIAL_PASSWORD`.
+5. El sistema redirige automáticamente a `/change-password` — el acceso al resto de la app está bloqueado hasta completar el cambio.
+6. Ingresar y confirmar la nueva contraseña definitiva (mínimo 8 caracteres).
+7. El sistema genera un nuevo token con `is_temporary=False` y redirige al Dashboard.
+
+**Nota:** `ADMIN_INITIAL_PASSWORD` solo se usa en el seed del primer arranque y en `reset_admin.py`. Cambiarla en `.env` después del primer login **no afecta** la contraseña activa en la DB. Para resetear la contraseña, usar `scripts/reset_admin.py`.
+
+---
+
+### Reset de contraseña de emergencia (reset_admin.py)
+
+Si el operador pierde acceso o necesita restablecer la contraseña:
+
+```bash
+# Dentro del contenedor backend:
+docker exec -it aplicacion-gym-backend-1 python scripts/reset_admin.py
+
+# O en entorno local con virtualenv activo:
+cd backend && python scripts/reset_admin.py
+```
+
+El script:
+- Actualiza `hashed_password` al valor hash de `ADMIN_INITIAL_PASSWORD` en `.env`.
+- Establece `is_temporary=True` — el operador debe cambiar la contraseña en el siguiente login.
+- Nunca elimina ni recrea el usuario (usa `UPDATE`, no `DELETE+INSERT`).
+
+---
+
+### Checklist de actualización para instalaciones existentes (TD-60)
+
+Al actualizar una instalación que no tenía F2 a una versión con F2:
+
+1. **Antes de reiniciar el backend**, agregar al `.env` raíz:
+   ```
+   JWT_SECRET_KEY=<generar con: python -c "import secrets; print(secrets.token_hex(32))">
+   ADMIN_INITIAL_PASSWORD=<contraseña inicial segura>
+   ```
+2. Reconstruir imágenes: `docker compose up --build -d`.
+3. Al primer acceso, el sistema presentará la pantalla de login (nuevo comportamiento).
+4. Iniciar sesión con `admin` / `ADMIN_INITIAL_PASSWORD` y cambiar la contraseña.
+
+**Si no se completan los pasos 1 antes del reinicio:** el backend no arrancará con `DEBUG=false` — mensaje de error explícito indica las variables faltantes. Agregar las variables y reiniciar.
+
+---
+
+### Explicación de ADMIN_INITIAL_PASSWORD (TD-59)
+
+`ADMIN_INITIAL_PASSWORD` tiene dos usos exclusivos:
+
+| Cuándo se usa | Descripción |
+|---|---|
+| Seed inicial (`init_db`) | Primer arranque sin usuario admin → crea `admin_users` con esta contraseña y `is_temporary=True` |
+| Reset manual (`reset_admin.py`) | Restablece la contraseña del admin existente a esta contraseña con `is_temporary=True` |
+
+**No se usa en runtime**: la contraseña activa del operador vive en `admin_users.hashed_password` (DB). Cambiar `ADMIN_INITIAL_PASSWORD` en `.env` después del primer login no tiene ningún efecto hasta la próxima ejecución de `reset_admin.py`.
+
+---
+
+**Deuda técnica generada:** TD-58 (pin `bcrypt==4.0.1`), TD-59 (`ADMIN_INITIAL_PASSWORD` no cambia contraseña activa), TD-60 (arranque bloqueado en actualización sin `.env` actualizado), TD-55 (`corrected_by` ahora accionable con F2 implementado).
+
+### Endpoints nuevos (f2-auth-staff)
+POST /api/auth/login — recibe `{username, password}`, retorna `TokenResponse` (access_token, token_type, is_temporary)
+POST /api/auth/change-password — requiere Bearer token (allows is_temporary); retorna `TokenResponse` fresco
+
+### Archivos nuevos (f2-auth-staff)
+| Archivo | Descripción |
+|---|---|
+| `backend/app/models/admin_user.py` | Modelo `AdminUser` (id, username, hashed_password, is_temporary, created_at) |
+| `backend/app/schemas/auth.py` | LoginRequest, TokenResponse, ChangePasswordRequest, AdminUserRead |
+| `backend/app/repositories/admin_user_repository.py` | get_first, get_by_username, create, update_password |
+| `backend/app/services/auth_service.py` | AuthService, AuthError, hash_password, verify_token, _create_token |
+| `backend/app/api/deps.py` | get_current_user (allows is_temporary), require_active_user (blocks is_temporary) |
+| `backend/app/api/routes/auth.py` | Router /auth con login y change-password |
+| `backend/scripts/reset_admin.py` | Reset contraseña admin a temporal (UPDATE, nunca DELETE) |
+| `frontend/src/contexts/AuthContext.tsx` | AuthProvider, useAuth, TOKEN_KEY, parseToken, loadInitialState |
+| `frontend/src/components/ProtectedRoute.tsx` | Guard de React Router v6 (requiere token; redirige a /change-password si is_temporary) |
+| `frontend/src/pages/Login.tsx` | Pantalla de login con toggle show/hide, banner sesión expirada |
+| `frontend/src/pages/ChangePassword.tsx` | Pantalla cambio de contraseña (primer login); recibe token fresco sin re-login |
+
+### Archivos modificados (f2-auth-staff)
+| Archivo | Cambio |
+|---|---|
+| `backend/requirements.txt` | `python-jose[cryptography]==3.3.0`, `passlib[bcrypt]==1.7.4`, `bcrypt==4.0.1` |
+| `backend/app/core/config.py` | `jwt_secret_key`, `jwt_expire_hours`, `admin_initial_password`; model_validator extendido |
+| `backend/app/models/__init__.py` | Export `AdminUser` |
+| `backend/app/database/init_db.py` | Import `AdminUser`; `_seed_admin_user()` idempotente al final de `init_db()` |
+| `backend/app/main.py` | auth router (público); `_protected` aplicado a 10 routers; `Authorization` en CORS allow_headers |
+| `frontend/src/types/index.ts` | LoginRequest, TokenResponse, ChangePasswordRequest |
+| `frontend/src/services/api.ts` | `req()` añade header Bearer; 401 → redirect a /login?expired=1; loginUser(), changePassword() |
+| `frontend/src/App.tsx` | AuthProvider wrapper; rutas /login y /change-password fuera de AppLayout; logout + username en sidebar |
+
+---
+
 ## Próximo paso
 
 ### Actividades operativas pendientes (no son deuda de código)
 - **Deploy producción — Cliente Único Phase 1** (TD-51, Alta): ejecutar checklist Paso 5.5 sobre la instalación real del gimnasio antes de hacer `docker compose build backend`. Verificar V1–V4 sobre datos reales de `customers`, `sales` y `members`.
 
 ### Backlog funcional
+- **f2-auth-staff:** ✅ Completado (2026-06-19). JWT stateless, usuario admin único, flujo temporal/permanente, protección global via deps.py. Validado en Docker Compose. Ciclo completo Paso 1→7. Aprobado con observaciones (TD-58/59/60 registrados).
+- **correct-start-date:** ✅ Completado (2026-06-18). Corrección de fecha de inicio de membresía — ciclo completo Paso 1→7. Aprobado con observaciones (TD-55/56/57 diferidos).
+- **fix-normalize-date-str:** ✅ Completado (2026-06-18). `normalizeDateStr` corregida — Plan Día vence muestra día Bogotá correcto.
 - **F1 Bloque B:** ✅ Completado (2026-06-18). SEC-010/012/015/017 resueltos.
 - **TD-46:** ✅ Completado (2026-06-18). `_calculate_status` corregido a hora Bogotá.
 - **TD-52/53/54:** ✅ Completado (2026-06-18). Normalización zona horaria Bogotá en Dashboard y MembershipService — 5 líneas en 2 archivos.
 - **TD-35 (SEC-008):** Dependencias con CVEs — iniciativa separada, pendiente de aprobación.
-- **F2 auth staff:** Siguiente fase principal.
 - **Notificaciones Fase 3:** canales adicionales (WhatsApp/SMS) o plantillas personalizables.
 - **Tienda Fase D:** exportación de reportes o mejoras operativas.
 - **Cliente Único Phase 2:** actualizar frontend para usar `member_id` directamente; eliminar tabla `customers`, `CustomerService` y columna `sales.customer_id` (prerrequisito: mover `CreditPayment` a su propio módulo — TD-49).

@@ -5,7 +5,7 @@ from pathlib import Path
 # Add backend directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -13,7 +13,11 @@ from fastapi.encoders import jsonable_encoder
 
 from app.core.config import settings
 from app.database.init_db import init_db
-from app.api.routes import members, memberships, payments, dashboard, plans, body_measurements, attendance, store, backup, notifications
+from app.api.deps import require_active_user
+from app.api.routes import (
+    members, memberships, payments, dashboard, plans,
+    body_measurements, attendance, store, backup, notifications, auth,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +35,14 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if settings.debug else None,
     )
 
-    # TD-38: explicit methods, headers and no credentials (no cookie/session auth).
+    # TD-38: explicit methods, headers and no credentials (JWT via Authorization header).
+    # Authorization added to allow_headers for Bearer token support (F2).
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     # Database startup event
@@ -61,19 +66,24 @@ def create_app() -> FastAPI:
         )
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(sanitized)})
 
-    # Include routers
-    app.include_router(members.router, prefix="/api")
-    app.include_router(memberships.router, prefix="/api")
-    app.include_router(payments.router, prefix="/api")
-    app.include_router(dashboard.router, prefix="/api")
-    app.include_router(plans.router, prefix="/api")
-    app.include_router(body_measurements.router, prefix="/api")
-    app.include_router(attendance.router, prefix="/api")
-    app.include_router(store.router, prefix="/api")
-    app.include_router(backup.router, prefix="/api")
-    app.include_router(notifications.router, prefix="/api")
+    # A3: auth router registered first and WITHOUT require_active_user dependency.
+    # /auth/login is public; /auth/change-password requires only get_current_user (allows is_temporary).
+    app.include_router(auth.router, prefix="/api")
 
-    # Health check endpoint
+    # All existing routers require a valid, non-temporary token (require_active_user).
+    _protected = {"dependencies": [Depends(require_active_user)]}
+    app.include_router(members.router, prefix="/api", **_protected)
+    app.include_router(memberships.router, prefix="/api", **_protected)
+    app.include_router(payments.router, prefix="/api", **_protected)
+    app.include_router(dashboard.router, prefix="/api", **_protected)
+    app.include_router(plans.router, prefix="/api", **_protected)
+    app.include_router(body_measurements.router, prefix="/api", **_protected)
+    app.include_router(attendance.router, prefix="/api", **_protected)
+    app.include_router(store.router, prefix="/api", **_protected)
+    app.include_router(backup.router, prefix="/api", **_protected)
+    app.include_router(notifications.router, prefix="/api", **_protected)
+
+    # Health check endpoint — public (no auth required, used by Docker and monitoring).
     @app.get("/api/health")
     def health_check() -> dict[str, str]:
         """Health check endpoint."""

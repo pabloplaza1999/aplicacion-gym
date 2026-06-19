@@ -18,8 +18,10 @@ export function normalizeUtcStr(s: string): string {
 export function normalizeDateStr(s: string): string {
   const iso = s.replace(' ', 'T')
   if (/Z|[+-]\d{2}:\d{2}$/.test(iso)) return iso
-  const withTime = iso.includes('T') ? iso : iso + 'T00:00:00'
-  return withTime + '-05:00'
+  // Datetime naive (has T) → stored as UTC in DB → append Z
+  if (iso.includes('T')) return iso + 'Z'
+  // Date-only (YYYY-MM-DD, from /dashboard) → treat as Bogotá calendar date
+  return iso + 'T00:00:00-05:00'
 }
 
 export function fmtBogotaDate(utcStr: string | null | undefined): string {

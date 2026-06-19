@@ -4,8 +4,8 @@
 
 Verifica que:
 
-- El Paso 6 (Auditoría) haya sido completado.
-- El usuario haya aprobado continuar.
+* El Paso 6 (Auditoría) haya sido completado.
+* El usuario haya aprobado continuar.
 
 Si no existe aprobación registrada, responde:
 
@@ -17,11 +17,20 @@ y detente.
 
 ## Objetivo
 
-Actualizar únicamente la documentación afectada por la funcionalidad implementada.
+Consolidar y validar la documentación final afectada por la funcionalidad implementada.
+
+Verificar que la documentación técnica actualizada durante el Paso 4 siga siendo correcta después de:
+
+* Paso 5 (Pruebas)
+* Paso 5.5 (Impacto histórico, si aplica)
+* Paso 6 (Auditoría)
 
 No implementar código.
+
 No corregir errores.
+
 No ejecutar pruebas nuevas.
+
 No realizar auditorías adicionales.
 
 ---
@@ -30,17 +39,26 @@ No realizar auditorías adicionales.
 
 Antes de ejecutar:
 
-- Reutilizar conclusiones ya aprobadas de:
-  - Paso 1
-  - Paso 2
-  - Paso 3
-  - Paso 5
-  - Paso 5.5 (si aplica)
-  - Paso 6
+* Reutilizar conclusiones ya aprobadas de:
+
+  * Paso 1
+  * Paso 2
+  * Paso 3
+  * Paso 5
+  * Paso 5.5 (si aplica)
+  * Paso 6
+
+* Revisar cambios documentales realizados durante el Paso 4.
+
+* Confirmar que siguen siendo válidos tras pruebas y auditoría.
+
+* Actualizar únicamente aquello que haya cambiado entre la implementación y el resultado final validado.
 
 No repetir análisis.
 
 No regenerar documentación completa.
+
+No duplicar documentación ya actualizada correctamente.
 
 Localizar únicamente las secciones afectadas.
 
@@ -48,9 +66,9 @@ Actualizar solo los documentos realmente impactados.
 
 Objetivo:
 
-- minimizar consumo de tokens
-- minimizar lecturas innecesarias
-- evitar documentación duplicada
+* minimizar consumo de tokens
+* minimizar lecturas innecesarias
+* evitar documentación duplicada
 
 ---
 
@@ -58,20 +76,27 @@ Objetivo:
 
 ### 1. Documentación afectada
 
-Identificar qué documentos requieren actualización.
+Identificar qué documentos requieren:
+
+* creación
+* actualización
+* validación final
+* o ninguna modificación adicional
 
 Ejemplos:
 
-- FEATURE_SUMMARY.md
-- TECH_DEBT.md
-- REQUERIMIENTOS.md
-- ARQUITECTURA.md
-- BASE_DATOS.md
-- README.md
-- MANUAL_TECNICO.md
-- MANUAL_OPERADOR.md
+* FEATURE_SUMMARY.md
+* TECH_DEBT.md
+* REQUERIMIENTOS.md
+* ARQUITECTURA.md
+* BASE_DATOS.md
+* README.md
+* MANUAL_TECNICO.md
+* MANUAL_OPERADOR.md
 
-Actualizar únicamente los documentos afectados.
+Si un documento ya fue actualizado durante el Paso 4 y continúa siendo correcto tras pruebas y auditoría, indicar explícitamente:
+
+"Sin cambios adicionales requeridos."
 
 No modificar documentos sin cambios reales.
 
@@ -81,11 +106,11 @@ No modificar documentos sin cambios reales.
 
 Documentar:
 
-- Qué se implementó.
-- Qué problema resuelve.
-- Alcance final de la solución.
-- Funcionalidades incluidas.
-- Funcionalidades explícitamente fuera de alcance.
+* Qué se implementó.
+* Qué problema resuelve.
+* Alcance final de la solución.
+* Funcionalidades incluidas.
+* Funcionalidades explícitamente fuera de alcance.
 
 ---
 
@@ -95,13 +120,13 @@ Documentar únicamente si hubo cambios.
 
 Registrar:
 
-- Componentes afectados.
-- Servicios afectados.
-- APIs nuevas o modificadas.
-- Tablas nuevas o modificadas.
-- Dependencias agregadas.
-- Jobs scheduler agregados o modificados.
-- Cambios Docker relevantes.
+* Componentes afectados.
+* Servicios afectados.
+* APIs nuevas o modificadas.
+* Tablas nuevas o modificadas.
+* Dependencias agregadas.
+* Jobs scheduler agregados o modificados.
+* Cambios Docker relevantes.
 
 ---
 
@@ -111,10 +136,10 @@ Revisar conclusiones del Paso 6.
 
 Registrar únicamente:
 
-- Riesgos abiertos.
-- Limitaciones conocidas.
-- Mejoras futuras.
-- Deuda técnica aprobada.
+* Riesgos abiertos.
+* Limitaciones conocidas.
+* Mejoras futuras.
+* Deuda técnica aprobada.
 
 Actualizar TECH_DEBT.md cuando corresponda.
 
@@ -126,10 +151,10 @@ No resolver riesgos.
 
 Confirmar:
 
-- Compatibilidad con funcionalidades existentes.
-- Compatibilidad de datos.
-- Compatibilidad de APIs.
-- Compatibilidad operativa.
+* Compatibilidad con funcionalidades existentes.
+* Compatibilidad de datos.
+* Compatibilidad de APIs.
+* Compatibilidad operativa.
 
 Documentar únicamente restricciones reales.
 
@@ -141,12 +166,12 @@ Ejecutar únicamente si el Paso 5.5 fue requerido.
 
 Documentar:
 
-- Datos afectados.
-- Registros impactados.
-- Migraciones ejecutadas.
-- Correcciones históricas realizadas.
-- Backups generados previamente.
-- Validaciones posteriores a la corrección.
+* Datos afectados.
+* Registros impactados.
+* Migraciones ejecutadas.
+* Correcciones históricas realizadas.
+* Backups generados previamente.
+* Validaciones posteriores a la corrección.
 
 Si no hubo impacto histórico:
 
@@ -160,11 +185,18 @@ Omitir esta sección.
 
 Listar:
 
-- archivo
-- archivo
-- archivo
+* archivo
+* archivo
+* archivo
 
-Indicar brevemente qué se actualizó en cada uno.
+Para cada uno indicar:
+
+* Estado:
+
+  * Actualizado
+  * Validado sin cambios
+  * No requerido
+* Breve descripción del resultado.
 
 ---
 
@@ -172,12 +204,12 @@ Indicar brevemente qué se actualizó en cada uno.
 
 Incluir:
 
-- Funcionalidad implementada.
-- Estado final.
-- Riesgos pendientes.
-- Deuda técnica registrada.
-- Impacto histórico (si aplica).
-- Próximos pasos sugeridos.
+* Funcionalidad implementada.
+* Estado final.
+* Riesgos pendientes.
+* Deuda técnica registrada.
+* Impacto histórico (si aplica).
+* Próximos pasos sugeridos.
 
 ---
 
@@ -194,13 +226,15 @@ o
 (si existen riesgos o deuda técnica relevante).
 
 ---
+
 ## Cierre
 
 Finalizar con:
 
-"Documentación actualizada y proyecto listo para cierre.
+"Documentación actualizada y validada.
 
 ¿Deseas continuar al Paso 8 — Cierre y Publicación?"
+
 Opciones:
 
 1. Sí → ejecutar Paso 8.

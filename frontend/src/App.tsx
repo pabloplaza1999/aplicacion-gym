@@ -1,10 +1,14 @@
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import ProtectedRoute from './components/ProtectedRoute'
 import Dashboard from './pages/Dashboard'
 import Members from './pages/Members'
 import Payments from './pages/Payments'
 import Attendance from './pages/Attendance'
 import Store from './pages/Store'
 import Settings from './pages/Settings'
+import Login from './pages/Login'
+import ChangePassword from './pages/ChangePassword'
 
 const NAV = [
   { to: '/',         label: 'Dashboard', icon: (
@@ -50,8 +54,16 @@ const NAV_BOTTOM = [
   )},
 ]
 
-export default function App() {
+function AppLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { username, logout } = useAuth()
+
+  function handleLogout() {
+    logout()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <div className="min-h-screen flex">
       <aside className="w-60 shrink-0 flex flex-col border-r border-surface-border bg-surface-card">
@@ -103,24 +115,54 @@ export default function App() {
               </NavLink>
             )
           })}
-          <div className="px-3 pt-2">
+          <div className="px-3 pt-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
               <p className="text-xs text-gray-600 font-mono">v0.1.0 · Fase 2</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {username && (
+                <span className="text-xs text-gray-600 truncate max-w-[60px]" title={username}>{username}</span>
+              )}
+              <button
+                onClick={handleLogout}
+                title="Cerrar sesión"
+                className="text-gray-600 hover:text-gray-300 transition-colors"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
       </aside>
       <main className="flex-1 overflow-auto bg-surface">
-        <Routes>
-          <Route path="/"              element={<Dashboard />} />
-          <Route path="/members"       element={<Members />} />
-          <Route path="/payments"      element={<Payments />} />
-          <Route path="/attendance"    element={<Attendance />} />
-          <Route path="/tienda"        element={<Store />} />
-          <Route path="/configuracion" element={<Settings />} />
-        </Routes>
+        <Outlet />
       </main>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/change-password" element={<ChangePassword />} />
+          <Route element={<AppLayout />}>
+            <Route path="/"              element={<Dashboard />} />
+            <Route path="/members"       element={<Members />} />
+            <Route path="/payments"      element={<Payments />} />
+            <Route path="/attendance"    element={<Attendance />} />
+            <Route path="/tienda"        element={<Store />} />
+            <Route path="/configuracion" element={<Settings />} />
+          </Route>
+        </Route>
+      </Routes>
+    </AuthProvider>
   )
 }

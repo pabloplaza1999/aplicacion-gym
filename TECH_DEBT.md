@@ -381,6 +381,12 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-52 | ~~`get_memberships_by_status` y `get_members_by_plan` en `dashboard_repository.py` usan `datetime.utcnow()` — StatCards y tabla "Membresías por plan" incorrectos después de las 19:00 Bogotá~~ | ✅ RESUELTO |
 | TD-53 | ~~`_enrich_membership` usa `datetime.utcnow()` para `days_remaining` — muestra días negativos desde las 19:00 Bogotá en el último día~~ | ✅ RESUELTO |
 | TD-54 | ~~`_has_active_valid_voucher` y `get_active_voucher_warning` usan `datetime.utcnow()` — valera considerada inválida 5h antes de expirar localmente~~ | ✅ RESUELTO |
+| TD-55 | `corrected_by` no registrado en auditoría de correcciones — diferido a F2 (auth staff) | Baja |
+| TD-56 | GET historial de correcciones de membresía no implementado | Baja |
+| TD-57 | Índice compuesto `(membership_id, corrected_at)` en `membership_correction_logs` no creado | Baja |
+| TD-58 | `passlib[bcrypt]==1.7.4` incompatible con `bcrypt>=5.x` — pin explícito `bcrypt==4.0.1` requerido | Baja |
+| TD-59 | `ADMIN_INITIAL_PASSWORD` en `.env` no cambia contraseña activa — requiere `reset_admin.py` explícito | Baja |
+| TD-60 | Arranque bloqueado en producción si `.env` no incluye `JWT_SECRET_KEY` y `ADMIN_INITIAL_PASSWORD` antes del update | Media |
 
 **Resueltos en fixes-post-tienda-b:**
 - `UNIQUE(member_id, check_in_date)` en attendances → migrada a `(membership_id, check_in_date)` ✅
@@ -667,11 +673,23 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 - **Diagnóstico confirmado:** Compilar montando el código fuente directamente (`docker run --rm -v "<host>/frontend:/app" -w /app node:20-alpine npm run build`) produjo un hash distinto y correcto, probando que el build normal usaba fuente obsoleta.
 - **Procedimiento confiable de build (workaround):**
   1. `docker builder prune -f` antes de reconstruir, **o**
-  2. compilar por montaje directo y desplegar el `dist/` resultante con `docker cp ./frontend/dist/. aplicacion-gym-frontend-1:/usr/share/nginx/html/`.
-  Tras reconstruir la imagen, recrear el contenedor con `docker compose up -d --force-recreate frontend` y verificar el hash servido en `index.html`.
+  2. Build local con `VITE_API_URL` explícita + `docker cp` (ver checklist abajo).
+  Tras desplegar, verificar el hash en `index.html` del contenedor y hacer recarga dura en el browser.
 - **Módulos afectados:** Pipeline de build del servicio `frontend` (Docker Compose).
 - **Prioridad:** Media.
 - **Recomendación futura:** Investigar la causa raíz (sincronización de archivos de Docker Desktop en Windows / caché de BuildKit) o añadir un paso de verificación de hash post-build al procedimiento de despliegue.
+- **Lecciones aprendidas (incidente 2026-06-18):** tres capas de caché se activaron en el mismo ciclo de despliegue:
+  1. **Caché BuildKit (ya documentado):** `docker builder prune -f` + `docker compose build frontend` falló durante `npm ci` (error de red en Docker Desktop). Se escaló a build local.
+  2. **Build local sin `VITE_API_URL`:** el build local no hereda variables de `docker-compose.yml`. Sin la variable, Vite embebe `BASE = '/api'` (URL relativa). Nginx no tiene `proxy_pass` para `/api/*` → devuelve `index.html` (SPA fallback) → JSON parse error (`Unexpected token '<'`). Siempre inyectar explícitamente antes del build local: `$env:VITE_API_URL = "http://localhost:8000"`.
+  3. **Caché de navegador:** tras `docker cp`, el browser puede seguir sirviendo el bundle anterior. Siempre hacer recarga dura (`Ctrl+Shift+R`) y confirmar en DevTools → Network que las peticiones van a `:8000`.
+- **Checklist de despliegue frontend (build local + docker cp):**
+  1. `$env:VITE_API_URL = "http://localhost:8000"`
+  2. `cd frontend && npm run build`
+  3. Verificar: `dist/assets/index-HASH.js` contiene `"localhost:8000"`
+  4. `docker cp ./frontend/dist/. aplicacion-gym-frontend-1:/usr/share/nginx/html/`
+  5. Verificar: `docker exec aplicacion-gym-frontend-1 sh -c "grep 'index-' /usr/share/nginx/html/index.html"`
+  6. Browser: `Ctrl+Shift+R` (recarga dura)
+  7. DevTools → Network: confirmar peticiones a `:8000`
 
 ---
 
@@ -781,6 +799,85 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 - **Módulos afectados:** `backend/app/services/membership_service.py` — líneas 151 y 170.
 - **Prioridad:** Baja.
 - **Solución futura:** Reemplazar `now = datetime.utcnow()` por `now = datetime.utcnow() + BOGOTA_OFFSET` en ambos métodos. Resolver junto con TD-52 y TD-53 en una sola sesión.
+
+---
+
+## TD-55 — `corrected_by` (quién hizo la corrección) no registrado en auditoría
+
+- **ID:** TD-55
+- **Título:** El campo `corrected_by` fue eliminado del diseño técnico y queda diferido a F2 (auth staff).
+- **Descripción:** La tabla `membership_correction_logs` no registra qué usuario administrativo realizó la corrección. La omisión fue aprobada explícitamente en el Paso 3 para reducir complejidad antes de tener autenticación de personal (F2). Una vez implementado el sistema de auth, el campo puede añadirse con una migración idempotente (`ALTER TABLE ... ADD COLUMN corrected_by VARCHAR`).
+- **Riesgo:** Trazabilidad de responsabilidad incompleta — se sabe *qué* se corrigió y *cuándo*, pero no *quién* lo hizo.
+- **Impacto:** Bajo. En el contexto actual (un solo operador) no hay ambigüedad. Relevante solo cuando haya múltiples usuarios administrativos.
+- **Módulos afectados:** `backend/app/models/membership_correction.py`, `backend/app/repositories/membership_correction_repository.py`, `backend/app/services/membership_service.py`.
+- **Prioridad:** Baja — depende de F2 (auth staff).
+- **Recomendación futura:** En F2, añadir `corrected_by: int (FK → staff_users.id, nullable)` a `membership_correction_logs` con migración idempotente. Propagar desde el endpoint (usuario autenticado via token) → servicio → repositorio.
+
+---
+
+## TD-56 — GET historial de correcciones de membresía no implementado
+
+- **ID:** TD-56
+- **Título:** El endpoint `GET /memberships/{id}/corrections` fue eliminado del Paso 3 para reducir alcance.
+- **Descripción:** La tabla `membership_correction_logs` existe y es consultable vía `get_latest_for_membership()`, pero no hay endpoint público para listar el historial completo de correcciones de una membresía. La simplificación fue aprobada en el Paso 3 porque el operador no necesita auditar correcciones históricas desde la UI en este momento.
+- **Riesgo:** No hay visibilidad del historial de correcciones desde la interfaz — solo se muestra `last_correction_at` y `last_correction_reason` en el detalle de la membresía.
+- **Impacto:** Bajo. Los datos están en la BD y son auditables directamente con SQL si fuera necesario.
+- **Módulos afectados:** `backend/app/repositories/membership_correction_repository.py` (faltaría método `get_all_for_membership`), `backend/app/api/routes/memberships.py` (endpoint GET faltante), `frontend/src/pages/Members.tsx` (UI faltante).
+- **Prioridad:** Baja.
+- **Recomendación futura:** Implementar `GET /api/members/memberships/{id}/corrections` que devuelva lista de `MembershipCorrectionLogRead` ordenada por `corrected_at DESC`. Mostrar como sección colapsable en el detalle de membresía.
+
+---
+
+## TD-57 — Índice compuesto `(membership_id, corrected_at)` en `membership_correction_logs` no creado
+
+- **ID:** TD-57
+- **Título:** La tabla de auditoría carece de índice compuesto para consultas de historial paginadas por membresía.
+- **Descripción:** `membership_correction_logs` tiene índice individual en `membership_id` (via `index=True` en el modelo). Una consulta futura de historial ordenada por `corrected_at DESC` (TD-56) requeriría un índice compuesto `(membership_id, corrected_at)` para evitar sort en memoria. Identificado durante Paso 6 — Auditoría de `correct-start-date`.
+- **Riesgo:** Ninguno en el volumen actual (~100 clientes, pocas correcciones por membresía). Solo relevante si el volumen crece significativamente o se implementa paginación del historial.
+- **Impacto:** Bajo. Sin impacto funcional; solo rendimiento en consultas de historial.
+- **Módulos afectados:** `backend/app/models/membership_correction.py`, `backend/app/database/init_db.py` (requeriría `CREATE INDEX IF NOT EXISTS`).
+- **Prioridad:** Baja.
+- **Recomendación futura:** Al implementar TD-56 (GET historial de correcciones), añadir `Index('ix_mcl_membership_corrected_at', 'membership_id', 'corrected_at')` al modelo o como `CREATE INDEX IF NOT EXISTS` en `init_db.py`.
+
+---
+
+## TD-58 — `passlib[bcrypt]==1.7.4` incompatible con `bcrypt>=5.x`
+
+- **ID:** TD-58
+- **Título:** Pin explícito `bcrypt==4.0.1` requerido para evitar incompatibilidad con passlib 1.7.4.
+- **Descripción:** `passlib 1.7.4` (última versión estable) accede a `bcrypt.__about__.__version__` que fue eliminado en `bcrypt 5.x`. Sin el pin, `pip install passlib[bcrypt]` instala la última versión de bcrypt (5.x), que rompe el hash de contraseñas con `ValueError: password cannot be longer than 72 bytes` durante el detect_wrap_bug check de passlib. Descubierto durante el seed inicial de F2 Auth Staff.
+- **Riesgo:** Si alguien reinstala dependencias sin el pin, el seed de `admin_user` falla en startup y el sistema arranca sin usuario admin (inutilizable en primer despliegue).
+- **Impacto:** Bajo en instalaciones existentes (bcrypt ya anclado). Alto en instalaciones nuevas sin el pin.
+- **Módulos afectados:** `backend/requirements.txt`.
+- **Prioridad:** Baja.
+- **Workaround aplicado:** `bcrypt==4.0.1` añadido explícitamente en `requirements.txt` como pin de compatibilidad.
+- **Recomendación futura:** Actualizar a una versión de passlib compatible con bcrypt 5.x cuando esté disponible, o reemplazar passlib por `bcrypt` directamente para el hash de contraseñas (evita la dependencia intermedia).
+
+---
+
+## TD-59 — `ADMIN_INITIAL_PASSWORD` en `.env` no cambia contraseña activa del admin
+
+- **ID:** TD-59
+- **Título:** Cambiar `ADMIN_INITIAL_PASSWORD` en `.env` no actualiza la contraseña en DB sin ejecutar `reset_admin.py`.
+- **Descripción:** `ADMIN_INITIAL_PASSWORD` se usa solo en dos momentos: (1) seed inicial del admin en `_seed_admin_user()`, (2) reset manual vía `scripts/reset_admin.py`. En runtime, la contraseña activa vive en `admin_users.hashed_password`. Un operador que modifique la variable en `.env` puede creer que la contraseña cambia automáticamente, pero no es así.
+- **Riesgo:** Confusión operativa. El operador podría asumir que rotando `ADMIN_INITIAL_PASSWORD` en `.env` protege el sistema, sin ejecutar el reset.
+- **Impacto:** Bajo — no afecta datos ni funcionamiento. Solo riesgo operativo.
+- **Módulos afectados:** `backend/app/core/config.py`, `backend/scripts/reset_admin.py`, documentación operativa.
+- **Prioridad:** Baja.
+- **Documentado en:** FEATURE_SUMMARY.md — sección "Explicación de ADMIN_INITIAL_PASSWORD (TD-59)" y "Reset de contraseña de emergencia (reset_admin.py)".
+
+---
+
+## TD-60 — Arranque bloqueado si `.env` de producción no se actualiza antes del despliegue de F2
+
+- **ID:** TD-60
+- **Título:** Primera actualización a F2 en producción requiere `.env` con `JWT_SECRET_KEY` y `ADMIN_INITIAL_PASSWORD` antes de reiniciar el backend.
+- **Descripción:** El validador `_validate_production_secrets` en `config.py` bloquea el arranque si `DEBUG=false` y faltan `JWT_SECRET_KEY` (o usa el valor dev) o `ADMIN_INITIAL_PASSWORD`. Una instalación existente que actualice el código sin actualizar `.env` primero quedará con el backend inaccesible hasta configurar las variables.
+- **Riesgo:** App inaccessible en producción si el checklist de actualización no se sigue. El mensaje de error en consola es explícito y guía al operador.
+- **Impacto:** Alto (app inaccessible) — pero solo ocurre si se omite el checklist. El fail-fast es intencional y preferible a un arranque con secretos débiles.
+- **Módulos afectados:** `backend/app/core/config.py`.
+- **Prioridad:** Media.
+- **Documentado en:** FEATURE_SUMMARY.md — sección "Checklist de actualización para instalaciones existentes (TD-60)".
 
 ---
 

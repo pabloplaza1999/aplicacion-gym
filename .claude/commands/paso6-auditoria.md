@@ -1,8 +1,8 @@
-Paso 6 — Auditoría
+\# Paso 6 — Auditoría
 
 
 
-Guardia de paso
+\## Guardia de paso
 
 
 
@@ -40,7 +40,7 @@ y detente.
 
 
 
-Objetivo
+\## Objetivo
 
 
 
@@ -72,7 +72,7 @@ La finalidad de esta fase es consolidar los hallazgos obtenidos durante el desar
 
 
 
-Instrucciones
+\## Instrucciones
 
 
 
@@ -84,13 +84,39 @@ Utiliza la información obtenida durante:
 
 
 
-\* Paso 3 — Diseño técnico
+\* Paso 1 — Validación de valor (cuando sea relevante para validar alcance, prioridades o desviaciones funcionales).
 
-\* Paso 4 — Implementación
+\* Paso 2 — Diseño funcional (cuando sea relevante para validar cumplimiento de reglas de negocio, restricciones y criterios de aceptación).
 
-\* Paso 5 — Validación funcional
+\* Paso 3 — Diseño técnico.
 
-\* Paso 5.5 — Validación de datos e impacto histórico (si aplica)
+\* Paso 4 — Implementación.
+
+\* Paso 5 — Validación funcional.
+
+\* Paso 5.5 — Validación de datos e impacto histórico (si aplica).
+
+
+
+No repetir análisis completos de Paso 1 o Paso 2.
+
+
+
+Utilizarlos únicamente para verificar:
+
+
+
+\* cumplimiento del alcance aprobado;
+
+\* cumplimiento de las reglas de negocio;
+
+\* ausencia de scope creep;
+
+\* alineación con los criterios de aceptación definidos.
+
+
+
+La auditoría debe centrarse principalmente en los resultados obtenidos durante los Pasos 3, 4, 5 y 5.5.
 
 
 
@@ -124,7 +150,7 @@ Objetivo:
 
 
 
-1\. Complejidad de la solución
+\## 1. Complejidad de la solución
 
 
 
@@ -158,7 +184,7 @@ Justificar brevemente considerando:
 
 
 
-2\. Calidad arquitectónica
+\## 2. Calidad arquitectónica
 
 
 
@@ -198,7 +224,7 @@ Justificar brevemente.
 
 
 
-3\. Riesgos técnicos detectados
+\## 3. Riesgos técnicos detectados
 
 
 
@@ -250,7 +276,7 @@ Excluir riesgos irrelevantes o puramente teóricos.
 
 
 
-4\. Impacto sobre funcionalidades existentes
+\## 4. Impacto sobre funcionalidades existentes
 
 
 
@@ -258,7 +284,7 @@ Evaluar:
 
 
 
-Backend
+\### Backend
 
 
 
@@ -270,7 +296,7 @@ Backend
 
 
 
-Frontend
+\### Frontend
 
 
 
@@ -282,7 +308,7 @@ Frontend
 
 
 
-Base de datos
+\### Base de datos
 
 
 
@@ -302,7 +328,125 @@ Indicar si existe riesgo de regresión residual.
 
 
 
-5\. Deuda técnica generada
+4.5 Validación de disponibilidad operativa
+
+
+
+Ejecutar únicamente si la funcionalidad implementada debe ser utilizada por usuarios, sistemas externos o procesos operativos.
+
+
+
+Objetivo:
+
+
+
+Verificar que la solución auditada sea la misma solución realmente disponible para uso.
+
+
+
+No asumir que:
+
+
+
+código implementado
+
+pruebas exitosas
+
+compilación exitosa
+
+
+
+implican disponibilidad operativa.
+
+
+
+Verificaciones obligatorias
+
+
+
+Determinar cuáles aplican según el tipo de proyecto:
+
+
+
+Aplicaciones web
+
+La funcionalidad es visible desde la interfaz final.
+
+Los cambios desplegados coinciden con los cambios auditados.
+
+Los componentes nuevos son accesibles para el usuario final.
+
+APIs o servicios
+
+Los endpoints nuevos o modificados están disponibles en el entorno objetivo.
+
+La versión desplegada corresponde a la versión auditada.
+
+Automatizaciones, jobs o procesos programados
+
+La versión activa corresponde a la versión validada.
+
+El proceso actualizado es el que realmente será ejecutado.
+
+Aplicaciones móviles o de escritorio
+
+La versión distribuida contiene los cambios auditados.
+
+La funcionalidad es accesible desde la interfaz final.
+
+Otros proyectos
+
+
+
+Aplicar una validación equivalente que permita demostrar que la solución disponible para uso corresponde a la solución auditada.
+
+
+
+Evidencia requerida
+
+
+
+La auditoría debe indicar explícitamente:
+
+
+
+Qué entorno fue verificado.
+
+Qué evidencia se utilizó.
+
+Qué mecanismo permitió confirmar la disponibilidad operativa.
+
+
+
+No aceptar afirmaciones sin evidencia verificable.
+
+
+
+Resultado
+
+
+
+Si no puede demostrarse que la funcionalidad está disponible para uso:
+
+
+
+Registrar un riesgo de auditoría.
+
+Clasificar como mínimo:
+
+
+
+"Aprobada con observaciones".
+
+
+
+Si existe evidencia suficiente de disponibilidad operativa:
+
+
+
+Registrar la validación como satisfactoria.
+
+\## 5. Deuda técnica generada
 
 
 
@@ -354,7 +498,7 @@ Solo registrarlas.
 
 
 
-6\. Seguridad y robustez
+\## 6. Seguridad y robustez
 
 
 
@@ -386,7 +530,7 @@ Indicar únicamente hallazgos relevantes.
 
 
 
-7\. Rendimiento
+\## 7. Rendimiento
 
 
 
@@ -424,7 +568,7 @@ Si no existe impacto relevante indicar:
 
 
 
-8\. Recomendaciones
+\## 8. Recomendaciones
 
 
 
@@ -460,7 +604,7 @@ Priorizar:
 
 
 
-Resultado final
+\## Resultado final
 
 
 
@@ -468,7 +612,7 @@ Presentar:
 
 
 
-Complejidad
+\### Complejidad
 
 
 
@@ -480,7 +624,7 @@ Complejidad
 
 
 
-Riesgos detectados
+\### Riesgos detectados
 
 
 
@@ -492,7 +636,7 @@ Riesgos detectados
 
 
 
-Deuda técnica
+\### Deuda técnica
 
 
 
@@ -504,7 +648,7 @@ Deuda técnica
 
 
 
-Estado de auditoría
+\### Estado de auditoría
 
 
 
@@ -512,7 +656,7 @@ Clasificar:
 
 
 
-\### Aprobada
+\#### Aprobada
 
 
 
@@ -520,7 +664,7 @@ La implementación es correcta y no existen observaciones relevantes.
 
 
 
-\### Aprobada con observaciones
+\#### Aprobada con observaciones
 
 
 
@@ -532,7 +676,7 @@ No impiden el uso de la funcionalidad.
 
 
 
-\### Requiere correcciones
+\#### Requiere correcciones
 
 
 
@@ -570,7 +714,7 @@ aunque la implementación sea técnicamente correcta.
 
 
 
-Próxima acción recomendada
+\## Próxima acción recomendada
 
 
 
@@ -588,7 +732,7 @@ Seleccionar una:
 
 
 
-Cierre
+\## Cierre
 
 
 

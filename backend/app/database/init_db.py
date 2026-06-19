@@ -15,6 +15,8 @@ from app.models.inventory import InventoryMovement  # noqa: F401
 from app.models.sale import Sale, SaleItem  # noqa: F401
 from app.models.customer import Customer, CreditPayment  # noqa: F401
 from app.models.notification import NotificationLog, NotificationSettings  # noqa: F401
+from app.models.membership_correction import MembershipCorrectionLog  # noqa: F401
+from app.models.admin_user import AdminUser  # noqa: F401
 
 
 def _add_column_if_missing(table: str, column: str, ddl: str) -> None:
@@ -331,6 +333,32 @@ def _seed_voucher_plans() -> None:
         db.close()
 
 
+def _seed_admin_user() -> None:
+    """Seed the default admin user idempotently (runs only if no AdminUser exists).
+
+    Uses ADMIN_INITIAL_PASSWORD from settings. The user is created with is_temporary=True,
+    forcing a mandatory password change on first login.
+    The seed never overwrites an existing user — use scripts/reset_admin.py for resets.
+    """
+    from app.core.config import settings
+    from app.services.auth_service import hash_password
+
+    db = SessionLocal()
+    try:
+        if db.query(AdminUser).first():
+            return  # already seeded — never overwrite
+        hashed = hash_password(settings.admin_initial_password)
+        db.add(AdminUser(username="admin", hashed_password=hashed, is_temporary=True))
+        db.commit()
+        print("[OK] Seed: usuario admin creado (contraseña temporal — cambiar en primer login)")
+    except Exception as e:
+        db.rollback()
+        print(f"[ERROR] Error seeding admin user: {e}")
+        raise
+    finally:
+        db.close()
+
+
 def init_db() -> None:
     """Initialize database with tables and seed data."""
     Base.metadata.create_all(bind=engine)
@@ -361,6 +389,7 @@ def init_db() -> None:
         db.close()
 
     _seed_voucher_plans()
+    _seed_admin_user()
 
 
 if __name__ == "__main__":

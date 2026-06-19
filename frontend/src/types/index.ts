@@ -44,6 +44,13 @@ export interface Membership {
   is_active: boolean
   frozen_at: string | null
   frozen_days_remaining: number | null
+  last_correction_at: string | null
+  last_correction_reason: string | null
+}
+
+export interface MembershipStartDateCorrectionCreate {
+  new_start_date: string  // "YYYY-MM-DD"
+  reason: string
 }
 
 export interface MembershipWithPlan extends Membership {
@@ -555,4 +562,21 @@ export interface NotificationRunResult {
   skipped: number
   failed: number
   message: string
+}
+
+// ── Auth — F2 ─────────────────────────────────────────────────────────────────
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface TokenResponse {
+  access_token: string
+  token_type: string
+  is_temporary: boolean
+}
+
+export interface ChangePasswordRequest {
+  new_password: string
+  confirm_password: string
 }

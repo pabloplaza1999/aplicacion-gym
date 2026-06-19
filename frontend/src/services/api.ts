@@ -1,7 +1,7 @@
 import type {
   Member, MemberCreate, MemberListResponse,
   Plan,
-  Membership, MembershipWithPlan, MembershipCreate, VoucherWarning,
+  Membership, MembershipWithPlan, MembershipCreate, MembershipStartDateCorrectionCreate, VoucherWarning,
   Payment, PaymentCreate, PaymentListResponse,
   DashboardKPI,
   CheckInResult, VoucherStatus,
@@ -13,16 +13,28 @@ import type {
   CreditPayment, CreditPaymentCreate,
   CarteraResponse,
   StoreReport,
+  LoginRequest, TokenResponse, ChangePasswordRequest,
 } from '../types'
 
 // VITE_API_URL = origen del servidor (ej: http://localhost:8000). El /api se agrega aquí siempre.
 const BASE = (import.meta.env.VITE_API_URL || '') + '/api'
 
+const TOKEN_KEY = 'gym_auth_token'
+
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
+  const token = localStorage.getItem(TOKEN_KEY)
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE}${path}`, { headers, ...options })
+
+  // 401 on any route except /auth/login → session expired, redirect to login
+  if (res.status === 401 && path !== '/auth/login') {
+    localStorage.removeItem(TOKEN_KEY)
+    window.location.replace('/login?expired=1')
+    return undefined as T
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     let message = 'Error de servidor'
@@ -60,6 +72,13 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T
   return res.json()
 }
+
+// ── Auth — F2 ─────────────────────────────────────────────────────────────────
+export const loginUser = (data: LoginRequest): Promise<TokenResponse> =>
+  req('/auth/login', { method: 'POST', body: JSON.stringify(data) })
+
+export const changePassword = (data: ChangePasswordRequest): Promise<TokenResponse> =>
+  req('/auth/change-password', { method: 'POST', body: JSON.stringify(data) })
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const getDashboard = (): Promise<DashboardKPI> =>
@@ -114,6 +133,15 @@ export const setMembershipActive = (membershipId: number, isActive: boolean): Pr
   req(`/members/memberships/${membershipId}/active`, {
     method: 'PATCH',
     body: JSON.stringify({ is_active: isActive }),
+  })
+
+export const correctMembershipStartDate = (
+  membershipId: number,
+  payload: MembershipStartDateCorrectionCreate,
+): Promise<MembershipWithPlan> =>
+  req(`/members/memberships/${membershipId}/start-date`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   })
 
 // ── Payments ──────────────────────────────────────────────────────────────────

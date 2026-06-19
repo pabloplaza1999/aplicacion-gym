@@ -66,14 +66,27 @@ Al finalizar:
 
 ## Actualización documental
 
-Actualizar únicamente los documentos afectados:
+\## Actualización documental de trabajo
 
-* FEATURE\_SUMMARY.md
-* TECH\_DEBT.md (si aparecen riesgos o deuda técnica)
-* REQUERIMIENTOS.md
-* ARQUITECTURA.md
 
-Solo cuando corresponda.
+
+Se permite actualizar documentación técnica utilizada por el equipo durante el desarrollo:
+
+
+
+\- FEATURE\_SUMMARY.md
+
+\- TECH\_DEBT.md
+
+\- notas técnicas equivalentes
+
+
+
+No actualizar documentación funcional, manuales, arquitectura final o documentación operativa.
+
+
+
+La consolidación documental final se realiza en Paso 7.
 
 ## Cierre
 
