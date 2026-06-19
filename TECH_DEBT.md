@@ -387,6 +387,9 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-58 | `passlib[bcrypt]==1.7.4` incompatible con `bcrypt>=5.x` — pin explícito `bcrypt==4.0.1` requerido | Baja |
 | TD-59 | `ADMIN_INITIAL_PASSWORD` en `.env` no cambia contraseña activa — requiere `reset_admin.py` explícito | Baja |
 | TD-60 | Arranque bloqueado en producción si `.env` no incluye `JWT_SECRET_KEY` y `ADMIN_INITIAL_PASSWORD` antes del update | Media |
+| TD-61 | Feature Flags por módulo — diferido a F5 | Baja |
+| TD-62 | Acceso LAN multi-PC — diferido a Edición Local Plus / F5 | Media |
+| TD-63 | Migración de volumen en actualizaciones pre-F3 → F3 (`aplicacion-gym_db-data` → `rhinopower_db-data`) — Mitigado por `upgrade.bat` | Baja |
 
 **Resueltos en fixes-post-tienda-b:**
 - `UNIQUE(member_id, check_in_date)` en attendances → migrada a `(membership_id, check_in_date)` ✅
@@ -891,3 +894,40 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 - **Módulos afectados:** `backend/app/models/customer.py` (define `CreditPayment`), `backend/app/repositories/member_repository.py` (importa `CreditPayment`).
 - **Prioridad:** Baja.
 - **Recomendación futura:** En Phase 2, antes de eliminar `customer.py`, mover `CreditPayment` a `models/credit_payment.py` y actualizar todos los imports (`member_repository.py`, `sale_repository.py`, `init_db.py`).
+
+---
+
+## TD-61 — Feature Flags por módulo diferidos a F5
+
+- **ID:** TD-61
+- **Estado:** Abierto — diferido a F5.
+- **Descripción:** F3 documenta las variables `.env` existentes como mecanismo de configuración por despliegue. No se implementó un sistema de flags activos porque no existen funcionalidades Premium que diferenciar de las Local. Un sistema de flags sin consumidores sería infraestructura prematura.
+- **Riesgo:** Si se necesita deshabilitar un módulo por despliegue antes de F5, no existe mecanismo formal.
+- **Impacto:** Bajo. En contexto actual (Edición Local única) todos los módulos son relevantes.
+- **Módulos afectados:** Sin afectación actual. Al implementar: `backend/app/core/config.py`, routers correspondientes, `docker-compose.yml`.
+- **Prioridad:** Baja.
+- **Recomendación futura (F5):** Variables de entorno por módulo en `.env` (`STORE_ENABLED=true`, `NOTIFICATIONS_ENABLED=true`) leídas por el backend en arranque. Sin base de datos de flags ni panel de administración.
+
+---
+
+## TD-63 — Migración de volumen en actualizaciones pre-F3 → F3
+
+- **ID:** TD-63
+- **Estado:** Mitigado por `upgrade.bat` (F3 Paso 7).
+- **Descripción:** F3 introdujo `name: rhinopower` en `docker-compose.yml` y declaró el volumen con `name: rhinopower_db-data`. Instalaciones previas usaban el nombre del directorio como project name (ej. `aplicacion-gym_db-data`). Sin migración, Docker Compose crea un volumen vacío y los datos quedan inaccesibles.
+- **Mitigación implementada:** `upgrade.bat` detecta automáticamente `aplicacion-gym_db-data`, migra los datos a `rhinopower_db-data` de forma estrictamente aditiva (nunca toca el volumen origen), valida que `gym.db` exista en el destino y solo entonces inicia los contenedores.
+- **Módulos afectados:** `docker-compose.yml` (volumes), `upgrade.bat`, `docs/ACTUALIZACION.md`.
+- **Prioridad:** Baja — resuelto para instalaciones conocidas (legacy `aplicacion-gym_db-data`).
+
+---
+
+## TD-62 — Acceso LAN multi-PC diferido a Edición Local Plus / F5
+
+- **ID:** TD-62
+- **Estado:** Abierto — diferido a F5 / Edición Local Plus.
+- **Descripción:** El kit F3 soporta únicamente acceso desde la PC donde está instalado (localhost). Habilitar LAN multi-PC requiere configurar `BIND_ADDR`, `VITE_API_URL` con la IP local y gestionar reglas de firewall de Windows. Sin TLS (diferido a F5), exponer la API en la red local implica tráfico en claro.
+- **Riesgo:** Gimnasios con múltiples terminales no pueden acceder desde todos los equipos.
+- **Impacto:** Medio para gimnasios multi-PC. Bajo para el caso más común (una PC de recepción).
+- **Módulos afectados:** `docker-compose.yml` (BIND_ADDR), `nginx.conf` (CORS), `.env` (VITE_API_URL), documentación.
+- **Prioridad:** Media.
+- **Recomendación futura (F5 / Local Plus):** Documentar procedimiento de configuración LAN y añadir sección de "instalación avanzada" en el kit con los pasos para BIND_ADDR + firewall + IP fija.

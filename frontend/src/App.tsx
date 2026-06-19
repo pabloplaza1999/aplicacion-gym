@@ -118,7 +118,7 @@ function AppLayout() {
           <div className="px-3 pt-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
-              <p className="text-xs text-gray-600 font-mono">v0.1.0 · Fase 2</p>
+              <p className="text-xs text-gray-600 font-mono">v1.0 · Local</p>
             </div>
             <div className="flex items-center gap-2">
               {username && (

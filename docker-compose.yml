@@ -1,6 +1,9 @@
+name: rhinopower
+
 services:
 
   backend:
+    image: rhinopower/backend:1.0
     build:
       context: ./backend
     # SEC-005/R3: bind parametrizado. Default seguro = loopback (solo la propia
@@ -21,6 +24,7 @@ services:
       start_period: 10s
 
   frontend:
+    image: rhinopower/frontend:1.0
     build:
       context: ./frontend
       args:
@@ -34,6 +38,7 @@ services:
     restart: unless-stopped
 
   scheduler:
+    image: rhinopower/backend:1.0
     build:
       context: ./backend
     command: ["python", "-m", "scheduler.main"]
@@ -47,3 +52,4 @@ services:
 
 volumes:
   db-data:
+    name: rhinopower_db-data

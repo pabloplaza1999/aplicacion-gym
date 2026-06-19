@@ -530,6 +530,38 @@ POST /api/auth/change-password — requiere Bearer token (allows is_temporary); 
 
 ---
 
+🔧 f3-edicion-local **F3 — Kit de Entrega Rhinopower (Edición Local).** Primera versión instalable y comercializable del sistema. Sin cambios en lógica de negocio; únicamente empaquetado, scripts operativos y documentación del cliente.
+
+**Cambios de código:**
+- `frontend/src/App.tsx`: etiqueta de versión `v0.1.0 · Fase 2` → `v1.0 · Local`.
+- `docker-compose.yml`: añade `name: rhinopower` (contenedores predecibles) y directivas `image: rhinopower/backend:1.0` / `image: rhinopower/frontend:1.0` — fuente única para dev (`--build`) y distribución (imagen pre-construida).
+- `.env.example`: documenta variables F2 faltantes (`JWT_SECRET_KEY`, `ADMIN_INITIAL_PASSWORD`).
+
+**Scripts operativos (nuevos en raíz):**
+- `start.bat` — inicia Docker Compose y abre el navegador en `http://localhost`.
+- `stop.bat` — detiene los contenedores de forma ordenada.
+- `upgrade.bat` — migración automática y aditiva de `aplicacion-gym_db-data` → `rhinopower_db-data` para instalaciones pre-F3; idempotente para instalaciones nuevas.
+- `backup-manual.bat` — crea respaldo manual vía `docker compose exec backend python scripts/create_backup.py`.
+- `reset-password.bat` — restablece contraseña admin a la inicial vía `docker compose exec backend python scripts/reset_admin.py`.
+- `load-images.bat` — carga imágenes `.tar` para instalaciones offline.
+
+**Script backend standalone (nuevo):**
+- `backend/scripts/create_backup.py` — backup manual con solo stdlib (`sqlite3.backup()`); sin dependencias de FastAPI ni BackupService.
+
+**Documentación del cliente (nueva en `docs/`):**
+- `INSTALACION.md` — guía paso a paso para el instalador (~30 min).
+- `OPERACION.md` — operación diaria para el operador del gimnasio.
+- `BACKUP.md` — respaldo automático/manual y procedimiento de restauración.
+- `SOPORTE.md` — problemas comunes, soluciones y advertencia crítica sobre `docker compose down -v`.
+- `ACTUALIZACION.md` — procedimiento de upgrade desde versión anterior con fallback manual.
+
+**Documentación interna del publicador:**
+- `docs/EMPAQUETADO.md` — proceso de build, export de imágenes `.tar` y checklist de entrega.
+
+**Deuda técnica generada:** TD-61 (Feature Flags — diferido a F5), TD-62 (LAN multi-PC — diferido a F5/Local Plus), TD-63 (migración de volumen — mitigado por `upgrade.bat`).
+
+**Auditoría (Paso 6):** Aprobada con observaciones. Observaciones resueltas en Paso 7: packaging documentado (`EMPAQUETADO.md`), advertencia `down -v` en `SOPORTE.md`, migración automatizada (`upgrade.bat` + `ACTUALIZACION.md`).
+
 ## Próximo paso
 
 ### Actividades operativas pendientes (no son deuda de código)
