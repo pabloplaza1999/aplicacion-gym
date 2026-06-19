@@ -2,7 +2,8 @@
 
 from datetime import datetime, timedelta
 
-from jose import JWTError, jwt
+import jwt
+
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -47,7 +48,7 @@ def _create_token(user: AdminUser) -> str:
 def verify_token(token: str) -> dict:
     try:
         return jwt.decode(token, settings.jwt_secret_key, algorithms=["HS256"])
-    except JWTError:
+    except jwt.PyJWTError:
         raise AuthError("Token inválido o expirado")
 
 

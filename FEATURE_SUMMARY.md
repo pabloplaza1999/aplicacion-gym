@@ -619,6 +619,34 @@ Sin cambios de código. Sesión de definición de producto y arquitectura de pla
 - F6 Digital & Access (M13–18): P-06 App Móvil, P-05 Hardware, P-08 Avanzada
 - F7 Intelligence (M19–24): P-09 IA Predictiva, API pública
 
+🔧 f4-a-platform-infra **F4-A — Infraestructura de Plataforma (gym-platform).**
+
+- **TD-64 resuelto:** `python-jose 3.3.0` reemplazado por `PyJWT==2.9.0`. `cryptography` actualizado `41.0.7→43.0.3` (desbloqueado al eliminar jose). Tokens HS256 pre-migración compatibles (mismo formato Base64url). Import: `import jwt`; excepción: `jwt.PyJWTError`. 1 archivo modificado (`auth_service.py`).
+- **Feature Flags:** 3 campos `module_*: bool` en `Settings` (`config.py`). Modelo opt-out para módulos existentes (defaults `True`); módulos nuevos en F4-B+ usarán `default=False` (opt-in). Flag `False` → router no registrado → HTTP 404 (ruta inexistente).
+- **`GET /api/config/features`:** Nuevo endpoint público. Devuelve estado de módulos Core (siempre `true`) y Premium (desde flags). Router registrado antes de `_protected` en `main.py`. TD-65 generado para revisión de auth en F8+ (cloud).
+- **Scaffolding `backend/app/modules/`:** Directorios `modules/` y `modules/premium/` con convención documentada. Módulos nuevos nacen aquí; código Core existente no se mueve.
+- **Renombrado conceptual:** `project_name` → `"Gym Platform"`, `project_version` → `"1.2.0"`. `.env.example` header y sección `MODULE_*` actualizados.
+- **Tag `v1.1-rhinopower`:** Creado antes de F4-A sobre commit `441f5d3`. Línea de referencia estable e inmutable para TD-51, rollback y soporte de Rhinopower.
+
+### Archivos modificados (f4-a-platform-infra)
+| Archivo | Cambio |
+|---|---|
+| `backend/requirements.txt` | `python-jose` → `PyJWT==2.9.0`; `cryptography 41.0.7→43.0.3` |
+| `backend/app/services/auth_service.py` | `import jwt`; `except jwt.PyJWTError` |
+| `backend/app/core/config.py` | `project_name/version`; campos `module_notifications/body_tracking/store` |
+| `backend/app/main.py` | `config.router` público; routers Premium condicionales |
+| `.env.example` | Header `Gym Platform`; sección `MODULE_*` documentada |
+
+### Archivos nuevos (f4-a-platform-infra)
+| Archivo | Descripción |
+|---|---|
+| `backend/app/api/routes/config.py` | `GET /api/config/features` — estado de módulos |
+| `backend/app/modules/__init__.py` | Scaffolding con convención de organización |
+| `backend/app/modules/premium/__init__.py` | Scaffolding Premium con convención de flags |
+
+### Endpoints nuevos (f4-a-platform-infra)
+`GET /api/config/features` — devuelve estado activo de módulos Core y Premium (público, sin auth)
+
 ## Próximo paso
 
 ### Actividades operativas pendientes (no son deuda de código)

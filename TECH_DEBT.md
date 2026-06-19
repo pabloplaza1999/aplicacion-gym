@@ -377,7 +377,8 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-61 | Feature Flags por módulo — diferido a F5 | Baja |
 | TD-62 | Acceso LAN multi-PC — diferido a Edición Local Plus / F5 | Media |
 | TD-63 | Migración de volumen en actualizaciones pre-F3 → F3 (`aplicacion-gym_db-data` → `rhinopower_db-data`) — Mitigado por `upgrade.bat` | Baja |
-| TD-64 | `python-jose 3.3.0` (abandonado) bloquea upgrade de `cryptography` a ≥ 42.x — reemplazar por PyJWT en F4 | Baja |
+| TD-64 | ~~`python-jose 3.3.0` (abandonado) bloquea upgrade de `cryptography` a ≥ 42.x~~ | ✅ RESUELTO |
+| TD-65 | `GET /api/config/features` es público — revisar autenticación al evolucionar a cloud multi-tenant (F8+) | Baja |
 
 **Resueltos en fixes-post-tienda-b:**
 - `UNIQUE(member_id, check_in_date)` en attendances → migrada a `(membership_id, check_in_date)` ✅
@@ -905,10 +906,23 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 
 ---
 
-## TD-64 — `python-jose 3.3.0` bloquea upgrade de `cryptography` a ≥ 42.x
+## TD-65 — `GET /api/config/features` público — revisar en F8 (cloud)
+
+- **ID:** TD-65
+- **Estado:** Abierto — diferido a F8+.
+- **Descripción:** El endpoint `GET /api/config/features` no requiere autenticación. Decisión justificada para despliegue local/LAN: el dato es metadata no sensible (flags booleanos), y el frontend necesitará consultarlo antes del login en F4-B. Para cloud multi-tenant (F8+), el endpoint debe protegerse para evitar enumeración de módulos por cliente.
+- **Módulos afectados:** `backend/app/api/routes/config.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura (F8+):** Añadir `Depends(require_active_user)` al router de `config` en `main.py` — cambio de 1 línea cuando el contexto de despliegue lo requiera.
+
+---
+
+## TD-64 — `python-jose 3.3.0` bloquea upgrade de `cryptography` a ≥ 42.x ✅ RESUELTO
 
 - **ID:** TD-64
-- **Estado:** Abierto — diferido a F4.
+- **Estado:** Resuelto (F4-A, 2026-06-19).
+- **Solución aplicada:** `python-jose[cryptography]==3.3.0` reemplazado por `PyJWT==2.9.0`. `cryptography` actualizado de `41.0.7` a `43.0.3` (desbloqueado al eliminar la dependencia de jose). Cambio en 2 archivos: `requirements.txt` y `auth_service.py` (import + excepción). Tokens HS256 pre-migración válidos sin re-login (mismo formato Base64url, mismo algoritmo y clave).
+- **Estado original:** Abierto — diferido a F4.
 - **Descripción:** `python-jose 3.3.0` (última versión, proyecto inactivo desde 2021) usa APIs de `cryptography` que fueron modificadas en la serie 42.x. El pin `cryptography==41.0.7` es necesario mientras `python-jose` siga siendo la librería JWT. Los CVEs que exigen ≥ 42.x (CVE-2024-26130, CVE-2024-0727) no afectan al app de gestión de gimnasio — ambos requieren serialización PKCS12 ausente en el app. Para JWT HS256 (uso real), no hay vulnerabilidad activa.
 - **Riesgo:** Bajo en operación actual. Medio en instalaciones futuras con mayores requisitos de seguridad.
 - **Módulos afectados:** `backend/requirements.txt`, `backend/app/api/routes/auth.py`, `backend/app/services/auth_service.py`.

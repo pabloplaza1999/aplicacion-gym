@@ -18,7 +18,7 @@ from app.database.init_db import init_db
 from app.api.deps import require_active_user
 from app.api.routes import (
     members, memberships, payments, dashboard, plans,
-    body_measurements, attendance, store, backup, notifications, auth,
+    body_measurements, attendance, store, backup, notifications, auth, config,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,22 +109,29 @@ def create_app() -> FastAPI:
         )
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(sanitized)})
 
-    # A3: auth router registered first and WITHOUT require_active_user dependency.
-    # /auth/login is public; /auth/change-password requires only get_current_user (allows is_temporary).
+    # Public routers — no authentication required.
     app.include_router(auth.router, prefix="/api")
+    app.include_router(config.router, prefix="/api")
 
-    # All existing routers require a valid, non-temporary token (require_active_user).
+    # Core routers — require valid non-temporary token.
     _protected = {"dependencies": [Depends(require_active_user)]}
     app.include_router(members.router, prefix="/api", **_protected)
     app.include_router(memberships.router, prefix="/api", **_protected)
     app.include_router(payments.router, prefix="/api", **_protected)
     app.include_router(dashboard.router, prefix="/api", **_protected)
     app.include_router(plans.router, prefix="/api", **_protected)
-    app.include_router(body_measurements.router, prefix="/api", **_protected)
     app.include_router(attendance.router, prefix="/api", **_protected)
-    app.include_router(store.router, prefix="/api", **_protected)
     app.include_router(backup.router, prefix="/api", **_protected)
-    app.include_router(notifications.router, prefix="/api", **_protected)
+
+    # Premium module routers — registered only when their feature flag is active.
+    # Inactive modules return HTTP 404 (route not registered, not 403).
+    # Defaults are True to preserve behavior for existing installations (opt-out model).
+    if settings.module_notifications:
+        app.include_router(notifications.router, prefix="/api", **_protected)
+    if settings.module_body_tracking:
+        app.include_router(body_measurements.router, prefix="/api", **_protected)
+    if settings.module_store:
+        app.include_router(store.router, prefix="/api", **_protected)
 
     # Health check endpoint — public (no auth required, used by Docker and monitoring).
     @app.get("/api/health")

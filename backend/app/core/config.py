@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     """Application settings."""
 
     # Project
-    project_name: str = "Gym Management System"
-    project_version: str = "0.1.0"
+    project_name: str = "Gym Platform"
+    project_version: str = "1.2.0"
     # SEC-011: secure-by-default. Production runs with debug=False.
     # Development must opt in explicitly with DEBUG=true in its own .env.
     debug: bool = False
@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     backup_dir: str = "/app/data/backups"
     max_auto_backups: int = 30
     max_manual_backups: int = 10
+
+    # ── Feature flags — Premium modules ────────────────────────────────────────
+    # Opt-out model for modules already in production: default=True preserves
+    # existing behavior for installations that don't set the flag in .env.
+    # New Premium modules added in F4-B+ must default to False (opt-in).
+    # When a flag is False the router is never registered → HTTP 404 on all
+    # its endpoints (route does not exist, not 403).
+    module_notifications: bool = True   # P-01 Comunicación Automatizada
+    module_body_tracking: bool = True   # P-07 Seguimiento Corporal
+    module_store: bool = True           # Tienda (activo en todas las instalaciones actuales)
 
     class Config:
         env_file = ".env"
