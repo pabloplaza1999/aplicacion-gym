@@ -619,7 +619,7 @@ Sin cambios de código. Sesión de definición de producto y arquitectura de pla
 - F6 Digital & Access (M13–18): P-06 App Móvil, P-05 Hardware, P-08 Avanzada
 - F7 Intelligence (M19–24): P-09 IA Predictiva, API pública
 
-🔧 f4-a-platform-infra **F4-A — Infraestructura de Plataforma (gym-platform).**
+🔧 f4-a-platform-infra **F4-A — Infraestructura de Plataforma (gym-platform).** · **Commit:** `9f2b12b` · **Estado:** Implementado · Probado · Auditado · Aprobado
 
 - **TD-64 resuelto:** `python-jose 3.3.0` reemplazado por `PyJWT==2.9.0`. `cryptography` actualizado `41.0.7→43.0.3` (desbloqueado al eliminar jose). Tokens HS256 pre-migración compatibles (mismo formato Base64url). Import: `import jwt`; excepción: `jwt.PyJWTError`. 1 archivo modificado (`auth_service.py`).
 - **Feature Flags:** 3 campos `module_*: bool` en `Settings` (`config.py`). Modelo opt-out para módulos existentes (defaults `True`); módulos nuevos en F4-B+ usarán `default=False` (opt-in). Flag `False` → router no registrado → HTTP 404 (ruta inexistente).
@@ -662,6 +662,7 @@ Sin cambios de código. Sesión de definición de producto y arquitectura de pla
 ```
 
 ### Backlog funcional
+- **f4-a-platform-infra:** ✅ Completado (2026-06-19). Infraestructura de plataforma gym-platform. TD-64 PyJWT cerrado. Feature flags opt-out. GET /api/config/features. Scaffolding modules/premium/. Ciclo completo Paso 1→7. Aprobado con observaciones resueltas (commit 9f2b12b, tag v1.1-rhinopower intacto).
 - **f2-auth-staff:** ✅ Completado (2026-06-19). JWT stateless, usuario admin único, flujo temporal/permanente, protección global via deps.py. Validado en Docker Compose. Ciclo completo Paso 1→7. Aprobado con observaciones (TD-58/59/60 registrados).
 - **correct-start-date:** ✅ Completado (2026-06-18). Corrección de fecha de inicio de membresía — ciclo completo Paso 1→7. Aprobado con observaciones (TD-55/56/57 diferidos).
 - **fix-normalize-date-str:** ✅ Completado (2026-06-18). `normalizeDateStr` corregida — Plan Día vence muestra día Bogotá correcto.

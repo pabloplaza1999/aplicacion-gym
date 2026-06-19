@@ -107,8 +107,8 @@ Cada cliente en producción corre sobre un tag conocido. El registro de qué cli
 | Validación | Pydantic v2 | 2.10.x |
 | ORM | SQLAlchemy | 2.0.x |
 | Base de datos | SQLite | local per-installation |
-| Autenticación | python-jose → PyJWT (migración F4) | 3.3.0 → PyJWT |
-| Criptografía | cryptography | 41.0.7 → 44.x post-migración JWT |
+| Autenticación | PyJWT (migrado en F4-A desde python-jose) | 2.9.0 |
+| Criptografía | cryptography (desbloqueado al eliminar python-jose) | 43.0.3 |
 | Scheduler | APScheduler | 3.10.x |
 | Contenedores | Docker + Docker Compose | — |
 
@@ -183,14 +183,17 @@ Este diseño es intencional. La activación de un módulo Premium es un evento d
 
 | Módulo | Variable `.env` | Valor por defecto | Descripción |
 |---|---|---|---|
-| Comunicación Automatizada | `MODULE_NOTIFICATIONS` | `false` | P-01 |
-| Cobros Online | `MODULE_PAYMENTS_ONLINE` | `false` | P-02 |
-| Ecosistema Digital | `MODULE_DIGITAL_ECOSYSTEM` | `false` | P-03 |
-| Control de Acceso | `MODULE_ACCESS_CONTROL` | `false` | P-04 + P-05 |
-| App Móvil | `MODULE_MOBILE_APP` | `false` | P-06 |
-| Seguimiento Corporal | `MODULE_BODY_TRACKING` | `false` | P-07 |
-| Analítica Avanzada | `MODULE_ANALYTICS` | `false` | P-08 |
-| IA Predictiva | `MODULE_AI` | `false` | P-09 |
+| Comunicación Automatizada | `MODULE_NOTIFICATIONS` | `true` ¹ | P-01 |
+| Cobros Online | `MODULE_PAYMENTS_ONLINE` | `false` | P-02 (F5) |
+| Ecosistema Digital | `MODULE_DIGITAL_ECOSYSTEM` | `false` | P-03 (F5) |
+| Control de Acceso | `MODULE_ACCESS_CONTROL` | `false` | P-04 + P-05 (F5/F6) |
+| App Móvil | `MODULE_MOBILE_APP` | `false` | P-06 (F6) |
+| Seguimiento Corporal | `MODULE_BODY_TRACKING` | `true` ¹ | P-07 |
+| Tienda | `MODULE_STORE` | `true` ¹ | Core monetario actual |
+| Analítica Avanzada | `MODULE_ANALYTICS` | `false` | P-08 (F5) |
+| IA Predictiva | `MODULE_AI` | `false` | P-09 (F7) |
+
+> ¹ Módulos ya en producción en todas las instalaciones actuales usan **opt-out** (`default=True`). Instalaciones nuevas que no contraten el módulo deben establecer explícitamente `MODULE_X=false`. Módulos nuevos a partir de F4-B usan **opt-in** (`default=False`).
 
 ### Endpoint de configuración
 
@@ -200,22 +203,34 @@ Retorna JSON con el estado de todos los módulos activos. El frontend lo consult
 
 ```json
 {
-  "notifications": true,
-  "payments_online": false,
-  "digital_ecosystem": false,
-  "access_control": true,
-  "mobile_app": false,
-  "body_tracking": true,
-  "analytics": false,
-  "ai": false
+  "core": {
+    "members": true,
+    "memberships": true,
+    "attendance": true,
+    "payments": true,
+    "dashboard": true,
+    "auth": true,
+    "backup": true
+  },
+  "premium": {
+    "notifications": true,
+    "body_tracking": true,
+    "store": true
+  }
 }
 ```
 
+> Estructura implementada en F4-A. Los módulos Core siempre retornan `true`. Los módulos Premium reflejan el valor del flag `MODULE_*` en `.env`. El agrupamiento `core`/`premium` es la representación canónica del endpoint.
+
+> **Nota sobre defaults (F4-A):** Los módulos ya en producción (notificaciones, seguimiento corporal, tienda) usan `default=True` (opt-out) para preservar compatibilidad con instalaciones existentes que no declaran los flags en `.env`. Módulos nuevos (F4-B+) usarán `default=False` (opt-in).
+
 ### Protección en backend
 
-Un módulo con flag en `false` rechaza todas sus rutas con HTTP 403, independientemente de si el frontend las oculta o no. La desactivación en el backend es la capa de seguridad real. La desactivación en el frontend es la capa de experiencia de usuario.
+Un módulo con flag en `false` tiene su router **no registrado** en FastAPI al arranque. Las rutas del módulo no existen en la tabla de enrutamiento → HTTP 404 (no 403). No hay guardia de middleware ni dependencia activa que rechace la petición — la ruta simplemente no existe.
 
-Este doble control garantiza que si alguien construye un cliente alternativo o accede directamente a la API, los módulos no contratados no son accesibles.
+**Consecuencia:** si alguien accede directamente a la API, los módulos no contratados devuelven 404 (no accesible), no 403 (denegado). El comportamiento es semánticamente correcto para módulos desactivados en instalación local. Para cloud multi-tenant (F8+) se evaluará si 403 es más adecuado (TD-65).
+
+La desactivación en el frontend (ocultar menús y rutas) es la capa de experiencia de usuario; la no-existencia del router en el backend es la capa de seguridad real.
 
 ---
 
@@ -275,7 +290,9 @@ Si la actualización falla por cualquier motivo, el backup tomado en el paso 2 p
 La arquitectura actual es el punto de partida correcto para el horizonte de 24 meses. Cada ola de producto es compatible con la siguiente sin reescritura.
 
 ### F4 — Platform Ready
-Reestructuración interna del directorio `modules/`. Feature flags operativos. Endpoint `/api/config/features` implementado. Sin cambios en la interfaz pública del API Core existente. Migración de `python-jose` a `PyJWT`.
+**F4-A ✅ Completado (2026-06-19, commit `9f2b12b`):** Feature flags operativos (`MODULE_*` en `.env`). Endpoint `GET /api/config/features` implementado como endpoint público. Scaffolding `backend/app/modules/premium/` para módulos F4-B+. Migración `python-jose` → `PyJWT==2.9.0`. `cryptography` actualizado a `43.0.3`. Sin cambios en la interfaz pública del API Core existente. Tag `v1.1-rhinopower` creado como línea inmutable de cliente.
+
+**F4-B (pendiente):** Módulos P-01 Comunicación Automatizada y P-07 Seguimiento Corporal convertidos a Premium. Frontend consume `GET /api/config/features` dinámicamente.
 
 ### F5 — Premium Edition
 Primeros módulos Premium activos en producción en instalaciones de clientes reales. Validación en producción de que el boundary `core/ → modules/` se mantiene bajo presión de desarrollo. TLS/HTTPS en Docker para habilitar acceso LAN multi-PC.

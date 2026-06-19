@@ -12,7 +12,13 @@
 | Core Platform v1.1 | ✅ En producción (cliente: Rhinopower) |
 | F3 — Local Edition | ✅ Cerrada |
 | TD-51 — Deploy productivo Rhinopower | 🔄 Pendiente ejecución operacional |
-| Repo renombrado a `gym-platform` | ⏳ Primer acto de F4 |
+| F4-A — Infraestructura de Plataforma | ✅ Completado (commit `9f2b12b`, 2026-06-19) |
+| Renombrado conceptual a `Gym Platform` | ✅ Completado (`project_name`, `project_version 1.2.0`) |
+| Repo renombrado a `gym-platform` en GitHub | ⏳ Pendiente (renombrado conceptual completo; repo GitHub aún `aplicacion-gym`) |
+| Tag `v1.1-rhinopower` como línea de cliente | ✅ Creado (`441f5d3`) |
+| Feature flags backend operativos | ✅ Completado (F4-A — `MODULE_*` en `.env`) |
+| `GET /api/config/features` | ✅ Completado (F4-A — endpoint público) |
+| PyJWT migration (TD-64) | ✅ Completado (F4-A — `PyJWT==2.9.0`, `cryptography 43.0.3`) |
 | Segunda instalación en producción | ⏳ Hito de cierre F4 |
 
 ---

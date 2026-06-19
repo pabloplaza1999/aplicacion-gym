@@ -374,7 +374,7 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-58 | `passlib[bcrypt]==1.7.4` incompatible con `bcrypt>=5.x` — pin explícito `bcrypt==4.0.1` requerido | Baja |
 | TD-59 | `ADMIN_INITIAL_PASSWORD` en `.env` no cambia contraseña activa — requiere `reset_admin.py` explícito | Baja |
 | TD-60 | Arranque bloqueado en producción si `.env` no incluye `JWT_SECRET_KEY` y `ADMIN_INITIAL_PASSWORD` antes del update | Media |
-| TD-61 | Feature Flags por módulo — diferido a F5 | Baja |
+| TD-61 | Feature Flags por módulo — diferido a F5 | ~~Baja~~ **RESUELTO (F4-A)** |
 | TD-62 | Acceso LAN multi-PC — diferido a Edición Local Plus / F5 | Media |
 | TD-63 | Migración de volumen en actualizaciones pre-F3 → F3 (`aplicacion-gym_db-data` → `rhinopower_db-data`) — Mitigado por `upgrade.bat` | Baja |
 | TD-64 | ~~`python-jose 3.3.0` (abandonado) bloquea upgrade de `cryptography` a ≥ 42.x~~ | ✅ RESUELTO |
@@ -882,16 +882,15 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 
 ---
 
-## TD-61 — Feature Flags por módulo diferidos a F5
+## TD-61 — Feature Flags por módulo diferidos a F5 ✅ RESUELTO
 
 - **ID:** TD-61
-- **Estado:** Abierto — diferido a F5.
-- **Descripción:** F3 documenta las variables `.env` existentes como mecanismo de configuración por despliegue. No se implementó un sistema de flags activos porque no existen funcionalidades Premium que diferenciar de las Local. Un sistema de flags sin consumidores sería infraestructura prematura.
-- **Riesgo:** Si se necesita deshabilitar un módulo por despliegue antes de F5, no existe mecanismo formal.
-- **Impacto:** Bajo. En contexto actual (Edición Local única) todos los módulos son relevantes.
-- **Módulos afectados:** Sin afectación actual. Al implementar: `backend/app/core/config.py`, routers correspondientes, `docker-compose.yml`.
-- **Prioridad:** Baja.
-- **Recomendación futura (F5):** Variables de entorno por módulo en `.env` (`STORE_ENABLED=true`, `NOTIFICATIONS_ENABLED=true`) leídas por el backend en arranque. Sin base de datos de flags ni panel de administración.
+- **Estado:** Resuelto (F4-A, 2026-06-19).
+- **Solución aplicada:** F4-A implementó el sistema de feature flags mediante variables de entorno `MODULE_*` en `.env`, leídas por `pydantic-settings` en `config.py`. Tres flags iniciales: `module_notifications`, `module_body_tracking`, `module_store`. Modelo opt-out para módulos ya en producción (default=True); módulos nuevos en F4-B+ usarán default=False (opt-in). Flag=False → router no registrado → HTTP 404. Endpoint público `GET /api/config/features` expone el estado de todos los módulos.
+- **Archivos implementados:** `backend/app/core/config.py` (campos `module_*`), `backend/app/main.py` (registro condicional), `backend/app/api/routes/config.py` (endpoint features), `.env.example` (sección MODULE_*).
+- **Descripción original:** F3 documenta las variables `.env` existentes como mecanismo de configuración por despliegue. No se implementó un sistema de flags activos porque no existen funcionalidades Premium que diferenciar de las Local. Un sistema de flags sin consumidores sería infraestructura prematura.
+- **Módulos afectados:** `backend/app/core/config.py`, routers correspondientes.
+- **Prioridad:** Baja — Resuelto.
 
 ---
 
