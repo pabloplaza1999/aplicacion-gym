@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import type { UserRole } from '../types'
 
 export const TOKEN_KEY = 'gym_auth_token'
 
@@ -6,6 +7,7 @@ interface AuthState {
   token: string | null
   username: string | null
   isTemporary: boolean
+  role: UserRole
 }
 
 interface AuthContextValue extends AuthState {
@@ -15,10 +17,16 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-function parseToken(token: string): { username: string; isTemporary: boolean; exp: number } | null {
+function parseToken(token: string): { username: string; isTemporary: boolean; role: UserRole; exp: number } | null {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]))
-    return { username: payload.sub, isTemporary: payload.is_temporary ?? false, exp: payload.exp }
+    return {
+      username: payload.sub,
+      isTemporary: payload.is_temporary ?? false,
+      // A5: graceful default for tokens issued before F4-C (no role claim)
+      role: (payload.role ?? 'admin') as UserRole,
+      exp: payload.exp,
+    }
   } catch {
     return null
   }
@@ -26,13 +34,13 @@ function parseToken(token: string): { username: string; isTemporary: boolean; ex
 
 function loadInitialState(): AuthState {
   const token = localStorage.getItem(TOKEN_KEY)
-  if (!token) return { token: null, username: null, isTemporary: false }
+  if (!token) return { token: null, username: null, isTemporary: false, role: 'admin' }
   const parsed = parseToken(token)
   if (!parsed || Date.now() / 1000 > parsed.exp) {
     localStorage.removeItem(TOKEN_KEY)
-    return { token: null, username: null, isTemporary: false }
+    return { token: null, username: null, isTemporary: false, role: 'admin' }
   }
-  return { token, username: parsed.username, isTemporary: parsed.isTemporary }
+  return { token, username: parsed.username, isTemporary: parsed.isTemporary, role: parsed.role }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -40,12 +48,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback((token: string, username: string, isTemporary: boolean) => {
     localStorage.setItem(TOKEN_KEY, token)
-    setState({ token, username, isTemporary })
+    const parsed = parseToken(token)
+    const role = parsed?.role ?? 'admin'
+    setState({ token, username, isTemporary, role })
   }, [])
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
-    setState({ token: null, username: null, isTemporary: false })
+    setState({ token: null, username: null, isTemporary: false, role: 'admin' })
   }, [])
 
   return (

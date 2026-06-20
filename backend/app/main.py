@@ -15,10 +15,11 @@ from fastapi.encoders import jsonable_encoder
 
 from app.core.config import settings
 from app.database.init_db import init_db
-from app.api.deps import require_active_user
+from app.api.deps import require_active_user, require_module
 from app.api.routes import (
     members, memberships, payments, dashboard, plans,
     body_measurements, attendance, store, backup, notifications, auth, config,
+    superadmin,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,11 +89,12 @@ def create_app() -> FastAPI:
 
         return await call_next(request)
 
-    # Database startup event
+    # Database startup — also loads module cache into memory.
     @app.on_event("startup")
     def startup_event() -> None:
-        """Initialize database on startup."""
         init_db()
+        from app.core.module_cache import load_from_db
+        load_from_db()
 
     # Validation error handler — logs field/reason for 422 errors.
     # SEC-013: never log the client-submitted value (`input`/`ctx` may carry PII:
@@ -123,15 +125,24 @@ def create_app() -> FastAPI:
     app.include_router(attendance.router, prefix="/api", **_protected)
     app.include_router(backup.router, prefix="/api", **_protected)
 
-    # Premium module routers — registered only when their feature flag is active.
-    # Inactive modules return HTTP 404 (route not registered, not 403).
-    # Defaults are True to preserve behavior for existing installations (opt-out model).
-    if settings.module_notifications:
-        app.include_router(notifications.router, prefix="/api", **_protected)
-    if settings.module_body_tracking:
-        app.include_router(body_measurements.router, prefix="/api", **_protected)
-    if settings.module_store:
-        app.include_router(store.router, prefix="/api", **_protected)
+    # Premium module routers — always registered; require_module enforces licensing at
+    # request time (A4). super_admin bypasses checks. Returns 403 (not 404) when inactive.
+    # Falls back to active=True when the gym is not in the module cache (A3).
+    app.include_router(
+        notifications.router, prefix="/api",
+        dependencies=[Depends(require_module("MODULE_NOTIFICATIONS"))],
+    )
+    app.include_router(
+        body_measurements.router, prefix="/api",
+        dependencies=[Depends(require_module("MODULE_BODY_TRACKING"))],
+    )
+    app.include_router(
+        store.router, prefix="/api",
+        dependencies=[Depends(require_module("MODULE_STORE"))],
+    )
+
+    # Super Admin router — requires role='super_admin' (enforced inside router).
+    app.include_router(superadmin.router, prefix="/api")
 
     # Health check endpoint — public (no auth required, used by Docker and monitoring).
     @app.get("/api/health")

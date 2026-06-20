@@ -307,3 +307,67 @@ Capa de IA como servicio adicional dentro del stack Docker (contenedor Python in
 
 ### F8+ — Evaluación Cloud (fuera del roadmap 24m)
 Si se decide avanzar hacia SaaS: el código de negocio no cambia. El cambio es de infraestructura: SQLite → PostgreSQL, Docker local → plataforma cloud, autenticación por instalación → autenticación multi-tenant. La separación `core/modules/` y la arquitectura de feature flags son compatibles con multi-tenancy sin reescritura del dominio de negocio. La decisión de avanzar a F8 se toma con datos reales de mercado, no de forma anticipada.
+
+---
+
+## Subagente `security-auditor` y Human Gate
+
+A partir de F0, las auditorías de cambios futuros se delegan a un subagente de solo lectura con flujo de aprobación humana obligatorio.
+
+### Identidad y restricciones
+
+- Solo lectura. Herramientas: `Read`, `Grep`, `Glob`. Sin `Edit`/`Write`/`Bash` mutante.
+  Su incapacidad técnica de modificar código *es* la primera mitad del gate.
+- Alcance por defecto: el diff de la rama actual. Modo alterno: ruta objetivo.
+- Alcance ampliado: además del código, audita artefactos de despliegue (`Dockerfile`, `docker-compose*.yml`, `.env.example`, `*.bat`) y, en Premium, flujos de pago y handlers de webhook.
+
+### Esquema de reporte (por hallazgo)
+
+```
+[SEC-NNN] <título>
+Severidad:  Crítica | Alta | Media | Baja
+Confianza:  Alta | Media | Baja
+Ubicación:  archivo:línea
+Riesgo:     <ruta de explotación en este contexto>
+Recomendación: <fix mínimo, sin código>
+OWASP:      <APIx>
+```
+
+### Escalas (calibradas a este proyecto)
+
+| Severidad | Criterio |
+|---|---|
+| Crítica | Explotable desde internet/LAN sin auth; exposición de pagos/PII/salud o descarga de BD |
+| Alta | Explotable con condiciones; escalada de privilegios; falta de authZ por objeto |
+| Media | Requiere acceso previo; defensa en profundidad ausente |
+| Baja | Hardening / buena práctica sin ruta de explotación directa |
+
+| Confianza | Criterio |
+|---|---|
+| Alta | Confirmado en código, ruta clara |
+| Media | Probable, depende de contexto fuera del archivo |
+| Baja | Heurístico, requiere verificación manual |
+
+> Regla de cobertura: reportar todo, incluido Baja/Baja. El filtrado lo hace el humano en el gate, no el auditor.
+
+### Máquina de estados del Human Gate
+
+```
+AUDITAR (subagente, solo lectura)
+   └─► HALLAZGOS.md (artefacto, IDs SEC-NNN)
+         └─► REVISIÓN HUMANA (en el hilo principal)
+               ├─ APROBADO  ─┐
+               ├─ RECHAZADO ─┼─► registra decisión + razón
+               └─ DIFERIDO  ─┘     (RECHAZADO/DIFERIDO → TECH_DEBT.md)
+                     │
+                     └─► APLICAR (solo IDs APROBADOS, vía implementación)
+                           └─► RE-AUDITAR los IDs aplicados (cierra el ciclo)
+```
+
+### Reglas invariantes del gate
+
+1. El auditor nunca toca el código fuente; solo produce el artefacto.
+2. Solo los IDs `APROBADO` pasan a implementación.
+3. `RECHAZADO`/`DIFERIDO` se registran en `TECH_DEBT.md` con razón.
+4. Tras aplicar, re-auditoría obligatoria de esos IDs.
+5. La orquestación ocurre en el hilo principal: el subagente auditor no invoca directamente al de desarrollo; el traspaso es por `HALLAZGOS.md`.

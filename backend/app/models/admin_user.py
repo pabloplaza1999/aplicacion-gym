@@ -1,4 +1,4 @@
-"""AdminUser model — single-row table for operator authentication."""
+"""AdminUser model — operator authentication with role support."""
 
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
@@ -6,7 +6,7 @@ from app.models.base import Base
 
 
 class AdminUser(Base):
-    """Single admin user for gym operator authentication."""
+    """Gym operator or Super Admin user."""
 
     __tablename__ = "admin_users"
 
@@ -15,3 +15,6 @@ class AdminUser(Base):
     hashed_password = Column(String(255), nullable=False)
     is_temporary = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Added via _run_migrations — not created by create_all on existing DBs
+    role = Column(String(20), nullable=False, default="admin")     # admin / super_admin
+    gym_id = Column(Integer, nullable=True)                        # null for super_admin

@@ -47,7 +47,7 @@ Gym Platform se licencia bajo el modelo de **licencia anual de uso**: el cliente
 - Todo lo del plan Starter
 - P-01 Comunicación Automatizada (WhatsApp + Email — recordatorios, campañas, reactivación)
 - P-07 Seguimiento Corporal (medidas, fotografías, reportes de evolución)
-- P-08 Analítica Básica (KPIs de retención, churn, reportes exportables)
+- P-08 Analítica Avanzada — entrega inicial (KPIs de retención, churn, reportes exportables)
 - Implementación remota + 1 sesión de capacitación del staff (hasta 3 personas)
 - Soporte prioritario año 1 (respuesta en 24 horas hábiles)
 - Actualizaciones del Core y de los módulos incluidos durante la vigencia
@@ -76,36 +76,11 @@ Gym Platform se licencia bajo el modelo de **licencia anual de uso**: el cliente
 
 ---
 
-## Add-ons — Módulos Premium Adicionales
+## Add-ons y Bundles
 
-Disponibles como complemento a cualquier plan. El precio es adicional al plan base contratado.
-
-| Módulo | Precio / año | Restricción de plan |
-|---|---|---|
-| P-01 Comunicación Automatizada | $600.000 COP | Sin restricción |
-| P-02 Cobros Online | $1.200.000 COP | Sin restricción |
-| P-03 Ecosistema Digital | $1.800.000 COP | Sin restricción |
-| P-04 Control de Acceso SW | $1.200.000 COP | Sin restricción |
-| P-05 Control de Acceso HW | $3.500.000 COP único + $600.000/año | Requiere P-04 activo |
-| P-06 App Móvil Cliente | $2.400.000 COP | Plan Professional o superior |
-| P-07 Seguimiento Corporal | $480.000 COP | Sin restricción |
-| P-08 Analítica Avanzada | $1.200.000 COP | Sin restricción |
-| P-09 IA Predictiva | $2.400.000 COP | Plan Premium + P-08 activo |
+Los precios individuales de cada módulo Premium (add-ons) y los precios de bundle se definen en **`PRODUCT_MODULES.md`** (fuente canónica). Allí también se documentan dependencias duras entre módulos, feature flags y ola de entrega de cada módulo.
 
 Los módulos incluidos en el plan contratado no generan cargo adicional como add-on.
-
----
-
-## Bundles con Descuento
-
-Para incentivar la adopción de múltiples módulos en un mismo contrato. Los bundles aplican sobre el precio de add-on, no sobre el precio de plan.
-
-| Bundle | Módulos | Precio bundle | Ahorro |
-|---|---|---|---|
-| Bundle Digital | P-02 + P-03 | $2.400.000 COP/año | 25% vs. separados |
-| Bundle Acceso | P-04 + P-06 | $3.000.000 COP/año | 20% vs. separados |
-| Bundle Inteligencia | P-08 + P-09 | $3.000.000 COP/año | 17% vs. separados |
-| Bundle Premium Total | P-01+P-02+P-03+P-04+P-08 | $5.400.000 COP/año | 30% vs. separados |
 
 ---
 

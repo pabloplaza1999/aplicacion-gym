@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # In production, set a strong value in .env before first launch.
     admin_initial_password: str = "admin123"
 
+    # Super Admin password — used for super_admin user seed and manual reset (scripts/reset_super_admin.py).
+    # Not required if super_admin functionality is not used. Mandatory in production when set.
+    super_admin_password: str = ""
+
     # Rate limiting — login endpoint only. Override via .env if needed.
     login_rate_limit_window: int = 60   # seconds in the sliding window
     login_rate_limit_max_attempts: int = 20  # max attempts per IP per window
@@ -51,12 +55,16 @@ class Settings(BaseSettings):
     max_auto_backups: int = 30
     max_manual_backups: int = 10
 
+    # ── Gym identity — used for initial licensing seed ──────────────────────────
+    # Set before first launch on a new installation.
+    gym_name: str = "Gym"
+    gym_plan: str = "professional"  # starter / professional / premium
+
     # ── Feature flags — Premium modules ────────────────────────────────────────
     # Opt-out model for modules already in production: default=True preserves
     # existing behavior for installations that don't set the flag in .env.
-    # New Premium modules added in F4-B+ must default to False (opt-in).
-    # When a flag is False the router is never registered → HTTP 404 on all
-    # its endpoints (route does not exist, not 403).
+    # These flags are used ONLY during initial DB seed (_migrate_to_licensing_system).
+    # After seed, the gym_modules table is the source of truth.
     module_notifications: bool = True   # P-01 Comunicación Automatizada
     module_body_tracking: bool = True   # P-07 Seguimiento Corporal
     module_store: bool = True           # Tienda (activo en todas las instalaciones actuales)
@@ -88,6 +96,10 @@ class Settings(BaseSettings):
             if not self.admin_initial_password:
                 errors.append(
                     "ADMIN_INITIAL_PASSWORD es obligatoria para el seed del primer usuario admin."
+                )
+            if self.super_admin_password and self.super_admin_password == self.admin_initial_password:
+                errors.append(
+                    "SUPER_ADMIN_PASSWORD no puede ser igual a ADMIN_INITIAL_PASSWORD."
                 )
             if errors:
                 raise ValueError(

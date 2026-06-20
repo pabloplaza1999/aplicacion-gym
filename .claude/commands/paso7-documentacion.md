@@ -87,12 +87,11 @@ Ejemplos:
 
 * FEATURE_SUMMARY.md
 * TECH_DEBT.md
-* REQUERIMIENTOS.md
 * ARQUITECTURA.md
 * BASE_DATOS.md
 * README.md
 * MANUAL_TECNICO.md
-* MANUAL_OPERADOR.md
+* MANUAL_USUARIO.md
 
 Si un documento ya fue actualizado durante el Paso 4 y continúa siendo correcto tras pruebas y auditoría, indicar explícitamente:
 

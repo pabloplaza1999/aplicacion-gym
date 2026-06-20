@@ -592,3 +592,60 @@ export interface FeaturesResponse {
   core: Record<string, boolean>
   premium: PremiumFeatures
 }
+
+// ── Licensing — F4-C (Super Admin panel) ─────────────────────────────────────
+export type UserRole = 'admin' | 'super_admin'
+
+export interface GymInfo {
+  id: number
+  name: string
+  slug: string
+  contact_name: string | null
+  contact_email: string | null
+  active: boolean
+}
+
+export interface LicenseInfo {
+  id: number
+  plan_name: string
+  valid_from: string | null
+  valid_until: string | null
+  status: 'active' | 'expired' | 'suspended'
+  notes: string | null
+  updated_at: string | null
+}
+
+export interface ModuleStatus {
+  module_key: string
+  name: string
+  active: boolean
+  source: 'plan' | 'addon'
+  activated_at: string | null
+  deactivated_at: string | null
+}
+
+export interface GymLicensePanel {
+  gym: GymInfo
+  license: LicenseInfo | null
+  modules: ModuleStatus[]
+}
+
+export interface GymUpdate {
+  name?: string
+  contact_name?: string | null
+  contact_email?: string | null
+}
+
+export interface LicensePlanUpdate {
+  plan_name: string
+}
+
+export interface LicenseValidityUpdate {
+  valid_from?: string | null
+  valid_until?: string | null
+}
+
+export interface ModuleToggle {
+  active: boolean
+  notes?: string
+}

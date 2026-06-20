@@ -619,7 +619,77 @@ Sin cambios de código. Sesión de definición de producto y arquitectura de pla
 - F6 Digital & Access (M13–18): P-06 App Móvil, P-05 Hardware, P-08 Avanzada
 - F7 Intelligence (M19–24): P-09 IA Predictiva, API pública
 
-🔧 f4-b-premium-frontend **F4-B — Módulos Premium y Frontend Dinámico.** · **Estado:** Implementado · TypeScript PASS
+🔧 f4-c-licensing **F4-C — Super Admin Licensing y Gestión de Módulos.** · **Estado:** Implementado · Pendiente Paso 5
+
+Sistema de licenciamiento comercial y control de módulos Premium desde UI de Super Admin. El ISV (desarrollador) puede activar/desactivar módulos por gimnasio desde el panel `/superadmin/licencia`, sin modificar `.env` ni código. Los operadores del gimnasio (Admin) no pueden modificar su propia configuración de módulos.
+
+**Arquitectura de dos compuertas:**
+- Gate 1 — `MODULE_REGISTRY` en código (`app/core/licensing.py`): catálogo técnico de módulos disponibles (constantes, no BD).
+- Gate 2 — `gym_modules` en BD: estado comercial por gimnasio. Caché en memoria (`app/core/module_cache.py`): `_cache: dict[int, dict[str, bool]]`, invalidado explícitamente en cada write del Super Admin.
+
+**Ajustes A1–A6 incorporados:**
+- A1: Constantes de licenciamiento en `app/core/licensing.py` (no en capa `domain/`).
+- A2: `LicensePanel.tsx` con todas las secciones inline (sin sub-componentes separados).
+- A3: `GET /api/config/features` usa `has_gym(1)` → module_cache si existe, fallback a settings si no (compatibilidad con arranque frío o seed pendiente).
+- A4: Routers Premium siempre registrados; enforcement por request con `require_module(key)` en `include_router()`.
+- A5: Tokens sin claim `role` / `gym_id` defaultean a `role='admin'` / `gym_id=1` (backward compat).
+- A6: Solo endpoints específicos (no `PUT /api/superadmin/license` genérico).
+
+**Migración automática en startup (`init_db.py`):**
+- `_add_column_if_missing("admin_users", "role", ...)` y `gym_id` — columnas nuevas sin ruptura.
+- `_migrate_to_licensing_system()` — seed idempotente de Gym, GymLicense, GymModule desde estado `.env` existente.
+- `_migrate_add_missing_modules()` — añade filas para nuevas claves MODULE_REGISTRY cada startup.
+- `_seed_super_admin_user()` — solo si `SUPER_ADMIN_PASSWORD` está definido.
+
+**Downgrade de plan:** módulos que pierden cobertura de plan quedan como `source='addon'`, `active=True`. El Super Admin decide explícitamente qué hacer.
+
+**Endpoints (5 — Super Admin only, `require_super_admin`):**
+- `GET /api/superadmin/panel` — GymLicensePanel completo.
+- `PUT /api/superadmin/gym` — actualizar info del gimnasio.
+- `PUT /api/superadmin/license/plan` — cambiar plan comercial.
+- `PUT /api/superadmin/license/validity` — actualizar fechas de vigencia.
+- `PATCH /api/superadmin/modules/{module_key}` — toggle de módulo individual.
+
+**Frontend (`/superadmin/licencia`):**
+- `LicensePanel.tsx`: GymSection (nombre/contacto), LicenseSection (plan + fechas), ModulesSection (toggle switches + badges de origen).
+- `App.tsx`: entrada "Licencias" en `NAV_BOTTOM` con `roleRequired: 'super_admin'`; `SuperAdminGuard` en ruta.
+- `AuthContext.tsx`: `role: UserRole` extraído del JWT; backward compat A5 aplicado.
+
+**Variables `.env` nuevas:** `SUPER_ADMIN_PASSWORD`, `GYM_NAME`, `GYM_PLAN`. Las variables `MODULE_*` existentes se usan únicamente para el seed inicial.
+
+### Archivos nuevos (f4-c-licensing)
+| Archivo | Descripción |
+|---|---|
+| `backend/app/core/licensing.py` | `MODULE_REGISTRY`, `PLAN_MODULES`, `MODULE_DEPENDENCIES` |
+| `backend/app/core/module_cache.py` | Caché en memoria: `load()`, `refresh_gym()`, `module_is_active()` |
+| `backend/app/models/gym.py` | Modelos `Gym`, `GymLicense`, `GymModule` |
+| `backend/app/schemas/gym.py` | Schemas Pydantic: `GymRead`, `LicenseRead`, `ModuleStatusRead`, `GymLicensePanel`, etc. |
+| `backend/app/repositories/license_repository.py` | `LicenseRepository`: get_gym, get_active_license, get_modules, get_module |
+| `backend/app/services/license_service.py` | `LicenseService`: get_panel, update_gym, change_plan, update_validity, toggle_module |
+| `backend/app/api/routes/superadmin.py` | 5 endpoints Super Admin |
+| `backend/scripts/reset_super_admin.py` | Reset password super_admin desde CLI |
+| `frontend/src/pages/LicensePanel.tsx` | Panel completo con secciones inline (A2) |
+
+### Archivos modificados (f4-c-licensing)
+| Archivo | Cambio |
+|---|---|
+| `backend/app/models/admin_user.py` | `+role VARCHAR(20)`, `+gym_id INTEGER nullable` |
+| `backend/app/models/__init__.py` | `+Gym, GymLicense, GymModule` exports |
+| `backend/app/core/config.py` | `+super_admin_password`, `+gym_name`, `+gym_plan`; validator producción |
+| `backend/app/database/init_db.py` | `+_migrate_to_licensing_system`, `+_migrate_add_missing_modules`, `+_seed_super_admin_user` |
+| `backend/app/services/auth_service.py` | JWT `+role`, `+gym_id` en payload |
+| `backend/app/api/deps.py` | `+require_super_admin`, `+require_module(key)` |
+| `backend/app/api/routes/config.py` | A3: fallback module_cache → settings |
+| `backend/app/main.py` | `+load_from_db()` startup; routers Premium siempre registrados con `require_module` (A4); `+superadmin router` |
+| `frontend/src/types/index.ts` | `+UserRole`, `+GymInfo`, `+LicenseInfo`, `+ModuleStatus`, `+GymLicensePanel`, tipos Upsert |
+| `frontend/src/services/api.ts` | `+getSuperAdminPanel`, `+updateGymInfo`, `+changeGymPlan`, `+updateLicenseValidity`, `+toggleModule` |
+| `frontend/src/contexts/AuthContext.tsx` | `+role: UserRole` en `AuthState` y `parseToken`; A5 backward compat |
+| `frontend/src/App.tsx` | `+SuperAdminGuard`; `+roleRequired` en `NAV_BOTTOM`; ruta `/superadmin/licencia` |
+| `.env.example` | `+SUPER_ADMIN_PASSWORD`, `+GYM_NAME`, `+GYM_PLAN` |
+
+---
+
+🔧 f4-b-premium-frontend **F4-B — Módulos Premium y Frontend Dinámico.** · **Estado:** Implementado · Probado · Auditado · Aprobado
 
 Integración frontend↔backend vía `GET /api/config/features`. Cero cambios de backend — F4-A ya implementaba registro condicional de routers.
 
@@ -634,6 +704,23 @@ Integración frontend↔backend vía `GET /api/config/features`. Cero cambios de
 **Modelo de fallback (Opción B, aprobado en Paso 3):** render inmediato con all-true. Cuando `getFeatures()` resuelve, re-render con valores reales. En ISV Local el delta es imperceptible (<100ms). Sin pantalla de carga adicional.
 
 **Opt-out garantizado:** `ALL_TRUE` como estado inicial + defaults `True` en backend → instalaciones Rhinopower sin `MODULE_*` en `.env` ven todos los módulos siempre.
+
+**Decisión: timeout de `getFeatures()` eliminado (Paso 4, aprobado por usuario).** Justificación: inconsistente con patrones de `api.ts`; sin valor significativo en modelo ISV local (endpoint responde <5ms, solo lee config); introduces complejidad innecesaria para un único endpoint. Patrón `req().catch(() => null)` es suficiente.
+
+**Dependencia de contrato (observación de auditoría):** el frontend depende de que `GET /api/config/features` retorne `{ core: {...}, premium: { notifications: bool, body_tracking: bool, store: bool } }`. Cualquier evolución del contrato backend debe sincronizarse con `PremiumFeatures` en `types/index.ts`. Documentado en TD-65.
+
+### Validación (f4-b-premium-frontend)
+**Paso 5 — PASS con riesgos:** TypeScript PASS. Sin defectos funcionales. Sin regresiones. Rhinopower mantiene comportamiento equivalente al estado previo. TD-66 registrado (rutas premium accesibles por URL directa cuando módulo desactivado — baja prioridad, diferido a F5).
+
+**Validación visual en Docker (4 escenarios — todos PASS):**
+- Escenario A (todo defaults): sidebar muestra Dashboard/Clientes/Pagos/Asistencia/Tienda/Configuración. Panel Notificaciones visible. Sección Medidas corporales visible.
+- Escenario B (`MODULE_STORE=false`): ítem Tienda desaparece del sidebar. Resto intacto.
+- Escenario C (`MODULE_NOTIFICATIONS=false`): ítem Configuración desaparece del sidebar. Panel Notificaciones en Dashboard oculto.
+- Escenario D (`MODULE_BODY_TRACKING=false`): Sección Medidas corporales en ficha de cliente oculta. Datos personales se guardan correctamente sin llamar `upsertMeasurements`.
+- Estado restaurado a todos defaults al finalizar validación.
+- Nota operativa: `docker compose up -d backend` (no `restart`) es requerido para que cambios de `.env` surtan efecto.
+
+**Paso 6 — Auditoría APROBADA con observaciones:** implementación coincide con diseño aprobado. Sin regresiones. Riesgo TD-66 aceptado como baja prioridad.
 
 ### Archivos modificados (f4-b-premium-frontend)
 | Archivo | Cambio |
@@ -679,10 +766,23 @@ Integración frontend↔backend vía `GET /api/config/features`. Cero cambios de
 ### Endpoints nuevos (f4-a-platform-infra)
 `GET /api/config/features` — devuelve estado activo de módulos Core y Premium (público, sin auth)
 
-## Próximo paso
+## Estado oficial del proyecto — 2026-06-19
 
-### Actividades operativas pendientes (no son deuda de código)
-- **Deploy producción — Cliente Único Phase 1** (TD-51, Alta): ejecutar checklist Paso 5.5 sobre la instalación real del gimnasio antes de hacer `docker compose build backend`. Verificar V1–V4 sobre datos reales de `customers`, `sales` y `members`. **DESBLOQUEADO** — TD-04, TD-50, TD-42 y TD-35 completados.
+### Dos líneas paralelas e independientes
+
+```
+Gym Platform (línea Producto)        Rhinopower (línea Cliente)
+─────────────────────────────        ──────────────────────────
+F4-A ✅ Cerrada (9f2b12b)            Core v1.1 ✅ En producción
+F4-B ✅ Cerrada (62844be)            tag: v1.1-rhinopower (441f5d3)
+F4   ✅ Técnicamente completada      TD-51 ⏳ Pendiente ejecución
+F5   🔒 No autorizado aún
+```
+
+> TD-51 pertenece exclusivamente a la línea Rhinopower. No bloquea ni condiciona la evolución de Gym Platform.
+
+### Actividades operativas pendientes — Línea Rhinopower
+- **TD-51** — Deploy producción Cliente Único Phase 1: ejecutar checklist sobre datos reales antes de `docker compose build backend`. Verificar V1–V4 sobre `customers`, `sales`, `members`. **DESBLOQUEADO** (TD-04, TD-50, TD-42, TD-35 completados). Programar ventana de despliegue cuando corresponda.
 
 ### Estado de cierre Edición Local
 ```
@@ -690,11 +790,11 @@ Integración frontend↔backend vía `GET /api/config/features`. Cero cambios de
 ✅ TD-50  validación FK create_sale — resuelto
 ✅ TD-42  rate limiting login custom middleware — resuelto (6/6 PASS)
 ✅ TD-35  actualización deps CVEs — resuelto (cryptography pin justificado → TD-64)
-🔒 TD-51  deploy producción — DESBLOQUEADO, pendiente ejecución
+⏳ TD-51  deploy producción — DESBLOQUEADO, pendiente ventana de despliegue
 ```
 
 ### Backlog funcional
-- **f4-b-premium-frontend:** ✅ Completado (2026-06-19). Módulos Premium y Frontend Dinámico. FeaturesContext + getFeatures(). Sidebar dinámico. Dashboard/MemberInfo condicionales. TypeScript PASS. Cero cambios de backend.
+- **f4-b-premium-frontend:** ✅ Completado (2026-06-19). Módulos Premium y Frontend Dinámico. FeaturesContext + getFeatures(). Sidebar dinámico. Dashboard/MemberInfo condicionales. Validado en Docker (4 escenarios). Ciclo completo Paso 1→7. Aprobado. TD-66 diferido a F5.
 - **f4-a-platform-infra:** ✅ Completado (2026-06-19). Infraestructura de plataforma gym-platform. TD-64 PyJWT cerrado. Feature flags opt-out. GET /api/config/features. Scaffolding modules/premium/. Ciclo completo Paso 1→7. Aprobado con observaciones resueltas (commit 9f2b12b, tag v1.1-rhinopower intacto).
 - **f2-auth-staff:** ✅ Completado (2026-06-19). JWT stateless, usuario admin único, flujo temporal/permanente, protección global via deps.py. Validado en Docker Compose. Ciclo completo Paso 1→7. Aprobado con observaciones (TD-58/59/60 registrados).
 - **correct-start-date:** ✅ Completado (2026-06-18). Corrección de fecha de inicio de membresía — ciclo completo Paso 1→7. Aprobado con observaciones (TD-55/56/57 diferidos).
@@ -707,3 +807,14 @@ Integración frontend↔backend vía `GET /api/config/features`. Cero cambios de
 - **Notificaciones Fase 3:** canales adicionales (WhatsApp/SMS) o plantillas personalizables.
 - **Tienda Fase D:** exportación de reportes o mejoras operativas.
 - **Cliente Único Phase 2:** actualizar frontend para usar `member_id` directamente; eliminar tabla `customers`, `CustomerService` y columna `sales.customer_id` (prerrequisito: mover `CreditPayment` a su propio módulo — TD-49).
+
+### Racionalización documental — 2026-06-19
+
+Consolidación de 25 → 22 archivos .md activos + 2 archivados.
+
+- **Creados:** `PROJECT_INDEX.md` (índice de orientación rápida), `docs/DEPLOYMENT_PLAYBOOK.md` (template de deploy multi-cliente).
+- **Archivados en `docs/archive/`:** `ROADMAP_COMERCIALIZACION.md` (contradecía estado actual; §5 migrado a `PLATFORM_ARCHITECTURE.md`, §8 migrado a `PRODUCT_ROADMAP.md`), `REQUERIMIENTOS.md` (obsoleto — describía como pendiente lo ya implementado).
+- **Eliminado:** `docs/MANUAL_OPERADOR.md` (contenido absorbido íntegramente por `MANUAL_USUARIO.md`).
+- **Editados:** `PLATFORM_ARCHITECTURE.md` (añadida sección security-auditor + Human Gate), `PRODUCT_ROADMAP.md` (añadida estrategia de modelo de IA por fase; P-08 nombre canónico unificado), `LICENSING_STRATEGY.md` (eliminada duplicación de tablas de precios; fuente canónica: `PRODUCT_MODULES.md`; P-08 unificado a "Analítica Avanzada"), `PROJECT_INDEX.md` (añadido `PRODUCT_VISION.md`), `CLAUDE.md` (`PROJECT_INDEX.md` como primera lectura obligatoria; `FEATURE_SUMMARY.md` como segunda).
+- **Nombre canónico P-08:** "Analítica Avanzada" — único en `PRODUCT_MODULES.md`, `PRODUCT_ROADMAP.md` y `LICENSING_STRATEGY.md`. La variación v1/v2 se expresa como "(entrega inicial v1)" y "(versión completa)", no como nombres distintos.
+- **Cierre de racionalización documental:** una única fuente de verdad por dominio confirmada. Sin duplicidades activas.

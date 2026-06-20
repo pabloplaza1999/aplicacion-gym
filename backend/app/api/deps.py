@@ -1,4 +1,4 @@
-"""FastAPI shared dependencies — auth token validation."""
+"""FastAPI shared dependencies — auth token validation and access control."""
 
 from typing import Optional
 
@@ -41,3 +41,33 @@ def require_active_user(user: AdminUser = Depends(get_current_user)) -> AdminUse
             detail="Debes cambiar tu contraseña antes de continuar",
         )
     return user
+
+
+def require_super_admin(user: AdminUser = Depends(require_active_user)) -> AdminUser:
+    """Require super_admin role. Regular admin users are rejected with 403."""
+    if getattr(user, "role", "admin") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso restringido al Super Administrador",
+        )
+    return user
+
+
+def require_module(module_key: str):
+    """Return a dependency that enforces module licensing for the current gym.
+
+    super_admin bypasses module checks. Unknown gym/module defaults to active=True
+    to avoid breaking existing installations during migration (A3 + A5).
+    """
+    def _check(user: AdminUser = Depends(require_active_user)) -> AdminUser:
+        if getattr(user, "role", "admin") == "super_admin":
+            return user
+        from app.core.module_cache import module_is_active
+        gym_id = getattr(user, "gym_id", None) or 1
+        if not module_is_active(gym_id, module_key):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Módulo no disponible en tu plan actual",
+            )
+        return user
+    return _check

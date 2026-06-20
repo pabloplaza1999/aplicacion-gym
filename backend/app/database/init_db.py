@@ -17,6 +17,7 @@ from app.models.customer import Customer, CreditPayment  # noqa: F401
 from app.models.notification import NotificationLog, NotificationSettings  # noqa: F401
 from app.models.membership_correction import MembershipCorrectionLog  # noqa: F401
 from app.models.admin_user import AdminUser  # noqa: F401
+from app.models.gym import Gym, GymLicense, GymModule  # noqa: F401
 
 
 def _add_column_if_missing(table: str, column: str, ddl: str) -> None:
@@ -305,6 +306,91 @@ def _run_migrations() -> None:
     _deactivate_duplicate_active_non_voucher_memberships()
     # TD-21 — purge orphaned credit_payments left by prior code that lacked cascade delete
     _purge_orphaned_credit_payments()
+    # F4-C Licensing — role + gym_id on admin_users
+    _add_column_if_missing("admin_users", "role", "role VARCHAR(20) NOT NULL DEFAULT 'admin'")
+    _add_column_if_missing("admin_users", "gym_id", "gym_id INTEGER")
+
+
+def _migrate_to_licensing_system() -> None:
+    """Seed gyms, gym_licenses, gym_modules from current config if not already done.
+
+    Idempotent: skips if gyms table already has rows.
+    Reads MODULE_* flags from settings to mirror current .env state into gym_modules.
+    """
+    import re
+    from datetime import date
+    from app.core.config import settings
+    from app.core.licensing import MODULE_REGISTRY, PLAN_MODULES
+
+    db = SessionLocal()
+    try:
+        if db.query(Gym).count() > 0:
+            return  # already seeded
+
+        slug = re.sub(r"[^a-z0-9]+", "-", settings.gym_name.lower()).strip("-") or "gym"
+        gym = Gym(name=settings.gym_name, slug=slug, active=True)
+        db.add(gym)
+        db.flush()
+
+        license_ = GymLicense(
+            gym_id=gym.id,
+            plan_name=settings.gym_plan,
+            valid_from=date.today(),
+            valid_until=None,
+            status="active",
+            notes="Licencia inicial — migrada desde configuración .env",
+        )
+        db.add(license_)
+
+        plan_modules = set(PLAN_MODULES.get(settings.gym_plan, []))
+        for module_key, module_info in MODULE_REGISTRY.items():
+            settings_key = module_info.get("settings_key")
+            active = getattr(settings, settings_key, True) if settings_key else False
+            source = "plan" if module_key in plan_modules else "addon"
+            db.add(GymModule(gym_id=gym.id, module_key=module_key, active=active, source=source))
+
+        db.commit()
+        print(
+            f"[OK] Licenciamiento: gimnasio '{settings.gym_name}' inicializado "
+            f"con plan '{settings.gym_plan}'"
+        )
+    except Exception as e:
+        db.rollback()
+        print(f"[ERROR] Error en migración de licenciamiento: {e}")
+        raise
+    finally:
+        db.close()
+
+
+def _migrate_add_missing_modules() -> None:
+    """Add MODULE_REGISTRY keys missing from gym_modules for each existing gym (idempotent).
+
+    Runs every startup so new modules added to the registry get rows for all gyms.
+    New modules default to active=False (opt-in for future releases).
+    """
+    from app.core.licensing import MODULE_REGISTRY
+
+    db = SessionLocal()
+    try:
+        gyms = db.query(Gym).all()
+        added = False
+        for gym in gyms:
+            existing = {
+                row.module_key
+                for row in db.query(GymModule).filter(GymModule.gym_id == gym.id).all()
+            }
+            for module_key in MODULE_REGISTRY:
+                if module_key not in existing:
+                    db.add(GymModule(gym_id=gym.id, module_key=module_key, active=False, source="addon"))
+                    added = True
+        if added:
+            db.commit()
+            print("[OK] Licenciamiento: filas de módulos nuevos añadidas")
+    except Exception as e:
+        db.rollback()
+        print(f"[ERROR] Error añadiendo módulos faltantes: {e}")
+    finally:
+        db.close()
 
 
 def _seed_voucher_plans() -> None:
@@ -348,7 +434,13 @@ def _seed_admin_user() -> None:
         if db.query(AdminUser).first():
             return  # already seeded — never overwrite
         hashed = hash_password(settings.admin_initial_password)
-        db.add(AdminUser(username="admin", hashed_password=hashed, is_temporary=True))
+        db.add(AdminUser(
+            username="admin",
+            hashed_password=hashed,
+            is_temporary=True,
+            role="admin",
+            gym_id=1,
+        ))
         db.commit()
         print("[OK] Seed: usuario admin creado (contraseña temporal — cambiar en primer login)")
     except Exception as e:
@@ -359,12 +451,45 @@ def _seed_admin_user() -> None:
         db.close()
 
 
+def _seed_super_admin_user() -> None:
+    """Seed the super_admin user if SUPER_ADMIN_PASSWORD is configured (idempotent).
+
+    Skipped silently when SUPER_ADMIN_PASSWORD is not set (development or single-gym setup
+    that doesn't use the licensing panel yet).
+    """
+    from app.core.config import settings
+    from app.services.auth_service import hash_password
+
+    if not settings.super_admin_password:
+        return
+
+    db = SessionLocal()
+    try:
+        if db.query(AdminUser).filter(AdminUser.username == "super_admin").first():
+            return  # already seeded
+        hashed = hash_password(settings.super_admin_password)
+        db.add(AdminUser(
+            username="super_admin",
+            hashed_password=hashed,
+            is_temporary=True,
+            role="super_admin",
+            gym_id=None,
+        ))
+        db.commit()
+        print("[OK] Seed: usuario super_admin creado (contraseña temporal — cambiar en primer login)")
+    except Exception as e:
+        db.rollback()
+        print(f"[ERROR] Error seeding super_admin user: {e}")
+        raise
+    finally:
+        db.close()
+
+
 def init_db() -> None:
     """Initialize database with tables and seed data."""
     Base.metadata.create_all(bind=engine)
     _run_migrations()
     # NOTE: _migrate_historical_customer_ids() removed — Cliente Único uses member_id directly.
-    # That function created Customer rows from Member data, which would reverse the migration.
 
     db = SessionLocal()
     try:
@@ -390,6 +515,9 @@ def init_db() -> None:
 
     _seed_voucher_plans()
     _seed_admin_user()
+    _migrate_to_licensing_system()
+    _migrate_add_missing_modules()
+    _seed_super_admin_user()
 
 
 if __name__ == "__main__":

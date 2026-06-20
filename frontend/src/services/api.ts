@@ -14,6 +14,8 @@ import type {
   CarteraResponse,
   StoreReport,
   LoginRequest, TokenResponse, ChangePasswordRequest,
+  GymLicensePanel, GymUpdate, LicensePlanUpdate, LicenseValidityUpdate, ModuleToggle,
+  GymInfo, LicenseInfo, ModuleStatus,
 } from '../types'
 
 // VITE_API_URL = origen del servidor (ej: http://localhost:8000). El /api se agrega aquí siempre.
@@ -195,9 +197,6 @@ export const getProducts = (params?: {
   return req(`/store/products${qs ? `?${qs}` : ''}`)
 }
 
-export const getProduct = (id: number): Promise<Product> =>
-  req(`/store/products/${id}`)
-
 export const createProduct = (data: ProductCreate): Promise<Product> =>
   req('/store/products', { method: 'POST', body: JSON.stringify(data) })
 
@@ -354,3 +353,19 @@ export const upsertMeasurements = (memberId: number, data: import('../types').Bo
 
 export const getFeatures = () =>
   req<import('../types').FeaturesResponse>('/config/features').catch((): null => null)
+
+// ── Super Admin — F4-C (Licensing panel) ─────────────────────────────────────
+export const getSuperAdminPanel = (): Promise<GymLicensePanel> =>
+  req('/superadmin/panel')
+
+export const updateGymInfo = (data: GymUpdate): Promise<GymInfo> =>
+  req('/superadmin/gym', { method: 'PUT', body: JSON.stringify(data) })
+
+export const changeGymPlan = (data: LicensePlanUpdate): Promise<LicenseInfo> =>
+  req('/superadmin/license/plan', { method: 'PUT', body: JSON.stringify(data) })
+
+export const updateLicenseValidity = (data: LicenseValidityUpdate): Promise<LicenseInfo> =>
+  req('/superadmin/license/validity', { method: 'PUT', body: JSON.stringify(data) })
+
+export const toggleModule = (moduleKey: string, data: ModuleToggle): Promise<ModuleStatus> =>
+  req(`/superadmin/modules/${moduleKey}`, { method: 'PATCH', body: JSON.stringify(data) })

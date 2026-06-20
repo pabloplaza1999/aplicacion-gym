@@ -8,6 +8,54 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 
 ---
 
+## TD-70 — `PATCH /superadmin/modules/{module_key}` retorna 404 para module_key invalido (deberia ser 422)
+
+- **ID:** TD-70
+- **Estado:** Abierto — baja prioridad.
+- **Descripcion:** Cuando `module_key` no existe en `MODULE_REGISTRY`, `LicenseService.toggle_module` lanza `ValueError` que el router mapea a 404. Semanticamente un input invalido deberia retornar 422 Unprocessable Entity.
+- **Riesgo:** Ninguno funcional. El frontend solo envia claves validas del `MODULE_REGISTRY`. Impacta unicamente tests externos con valores invalidos.
+- **Modulos afectados:** `backend/app/api/routes/superadmin.py` (endpoint toggle_module).
+- **Prioridad:** Baja.
+- **Recomendacion futura:** Cambiar `status_code=HTTP_404_NOT_FOUND` a `HTTP_422_UNPROCESSABLE_ENTITY` en el handler de ValueError del endpoint toggle_module.
+
+---
+
+## TD-67 — `admin_users.gym_id` sin FK a nivel de BD (SQLite ALTER TABLE)
+
+- **ID:** TD-67
+- **Estado:** Abierto — workaround activo.
+- **Descripción:** La columna `admin_users.gym_id` se añade vía `ALTER TABLE ADD COLUMN` en `init_db.py`. SQLite no soporta FK constraints en `ALTER TABLE`, por lo que la FK declarativa en el modelo ORM no se aplicará en BD hasta que se recree la tabla. La integridad referencial se garantiza a nivel de aplicación.
+- **Riesgo:** Bajo. En F4-C solo existe un usuario `super_admin` (gym_id=null) y usuarios admin con gym_id=1, valor siempre válido mientras el seed de Gym exista.
+- **Módulos afectados:** `backend/app/models/admin_user.py`, `backend/app/database/init_db.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura (F8+ multi-tenant):** Cuando se migre a PostgreSQL o se haga una migración `CREATE TABLE ... AS SELECT`, aplicar FK constraint real.
+
+---
+
+## TD-68 — Módulos con `source='addon'` y `active=True` al hacer downgrade — revisión pendiente por Super Admin
+
+- **ID:** TD-68
+- **Estado:** Abierto — comportamiento by design, requiere acción manual.
+- **Descripción:** Cuando el Super Admin cambia el plan a uno inferior (`change_plan`), los módulos que pierden cobertura de plan pasan a `source='addon'` pero permanecen `active=True`. No hay ningún indicador en el panel que alerte al Super Admin de que debe revisar esos módulos.
+- **Riesgo:** Medio. El cliente seguirá teniendo módulos activos que el plan no cubre, sin que el ISV lo note fácilmente.
+- **Módulos afectados:** `backend/app/services/license_service.py` (`change_plan`), `frontend/src/pages/LicensePanel.tsx` (ModulesSection).
+- **Prioridad:** Media.
+- **Recomendación futura (F5):** Añadir badge de advertencia "Addon fuera de plan" en `ModulesSection` para módulos `source='addon'` y `active=True` cuyo `module_key` no esté en el plan actual.
+
+---
+
+## TD-69 — `GET /api/superadmin/panel` asume single-tenant (gym_id=1)
+
+- **ID:** TD-69
+- **Estado:** Abierto — diseño F4-C intencionalmente single-tenant.
+- **Descripción:** Todos los endpoints `/api/superadmin/*` operan sobre `gym_id=1` hardcodeado (`_GYM_ID = 1`). Para F8+ multi-tenant, los endpoints requerirían recibir `gym_id` como parámetro y el Super Admin tendría un listado de gimnasios.
+- **Riesgo:** Ninguno en F4-C. Deuda de diseño para evolución futura.
+- **Módulos afectados:** `backend/app/api/routes/superadmin.py`, `backend/app/services/license_service.py`.
+- **Prioridad:** Baja.
+- **Recomendación futura (F8+):** Parametrizar `gym_id` en endpoints y añadir `GET /api/superadmin/gyms` para listado.
+
+---
+
 ## TD-01 — Valeras agotadas/vencidas siguen apareciendo como activas en Dashboard y current-membership ✅ RESUELTO
 
 - **ID:** TD-01

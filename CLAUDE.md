@@ -10,12 +10,13 @@ SQLite
 Vite 5
 
 ## Lectura mínima obligatoria
-1. FEATURE_SUMMARY.md
-2. Inspeccionar archivos relacionados
-3. Implementar
-4. Actualizar FEATURE_SUMMARY.md
+1. PROJECT_INDEX.md
+2. FEATURE_SUMMARY.md
+3. Inspeccionar archivos relacionados
+4. Implementar
+5. Actualizar FEATURE_SUMMARY.md
 
-Leer REQUERIMIENTOS.md, ARQUITECTURA.md o BASE_DATOS.md solo si el cambio lo requiere.
+Leer ARQUITECTURA.md o BASE_DATOS.md solo si el cambio lo requiere.
 
 ## Reglas
 - Cambios mínimos.

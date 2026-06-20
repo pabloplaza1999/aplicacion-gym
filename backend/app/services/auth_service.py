@@ -41,7 +41,13 @@ class AuthService:
 
 def _create_token(user: AdminUser) -> str:
     expire = datetime.utcnow() + timedelta(hours=settings.jwt_expire_hours)
-    payload = {"sub": user.username, "exp": expire, "is_temporary": user.is_temporary}
+    payload = {
+        "sub": user.username,
+        "exp": expire,
+        "is_temporary": user.is_temporary,
+        "role": getattr(user, "role", "admin") or "admin",
+        "gym_id": getattr(user, "gym_id", None),
+    }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm="HS256")
 
 

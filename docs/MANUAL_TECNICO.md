@@ -427,8 +427,8 @@ aplicacion-gym/
 ├── .env              # Configuración de entorno (no subir a Git)
 ├── .env.example      # Plantilla de configuración
 └── docs/
-    ├── MANUAL_OPERADOR.md
     ├── MANUAL_TECNICO.md
+    ├── MANUAL_USUARIO.md
     └── NOTIFICACIONES.md
 ```
 
