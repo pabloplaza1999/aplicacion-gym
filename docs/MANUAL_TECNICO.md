@@ -439,3 +439,112 @@ aplicacion-gym/
 | Frontend (Nginx) | 80 | Interfaz web |
 | Backend (FastAPI) | 8000 | API REST |
 | Base de datos | — | SQLite en volumen Docker |
+
+---
+
+## Administración de licencias y módulos Premium (F4-C)
+
+### Rol Super Admin
+
+El sistema tiene dos roles de usuario:
+
+| Rol | Usuario | Acceso |
+|---|---|---|
+| `admin` | `admin` | Dashboard, clientes, pagos, asistencia, tienda, configuración |
+| `super_admin` | `super_admin` | Todo lo anterior + panel de licenciamiento (`/superadmin/licencia`) |
+
+El `super_admin` es el ISV (proveedor del software). Solo él puede activar o desactivar módulos Premium. El `admin` es el operador del gimnasio y no puede modificar su propia configuración de módulos.
+
+### Configuración inicial del Super Admin
+
+Antes del primer arranque, agregar al `.env`:
+
+```env
+SUPER_ADMIN_PASSWORD=<contraseña-segura-distinta-a-ADMIN_INITIAL_PASSWORD>
+GYM_NAME=NombreDelGimnasio
+GYM_PLAN=professional
+```
+
+Valores válidos para `GYM_PLAN`: `starter`, `professional`, `premium`.
+
+Reconstruir imágenes antes de levantar:
+
+```powershell
+docker compose build
+docker compose up -d
+```
+
+El primer arranque ejecuta automáticamente:
+- Migraciones de columnas `role` y `gym_id` en `admin_users`.
+- Seed del gimnasio en `gyms`, licencia en `gym_licenses`, módulos en `gym_modules`.
+- Creación del usuario `super_admin` con `is_temporary=True`.
+
+### SUPER_ADMIN_PASSWORD vs contraseña en base de datos
+
+`SUPER_ADMIN_PASSWORD` solo actúa en dos momentos:
+
+| Momento | Qué hace |
+|---|---|
+| Seed inicial | Primer arranque sin usuario `super_admin` → lo crea con `is_temporary=True`. Si el usuario ya existe, **no hace nada**. |
+| Reset manual | `reset_super_admin.py` actualiza la contraseña del usuario existente a este valor con `is_temporary=True`. |
+
+La contraseña activa vive en `admin_users.hashed_password` (BD). Cambiar `SUPER_ADMIN_PASSWORD` en `.env` después del primer login **no modifica la contraseña activa** hasta ejecutar el script de reset.
+
+> **Caso especial — volumen existente con super_admin previo:** si la BD ya tiene un usuario `super_admin` (por ejemplo, de pruebas anteriores), el seed lo omite y la contraseña en BD puede no coincidir con `SUPER_ADMIN_PASSWORD`. Ejecutar `reset_super_admin.py` antes del primer acceso del ISV.
+
+### Reset de contraseña del Super Admin (reset_super_admin.py)
+
+Si el ISV pierde acceso o necesita restablecer la contraseña de `super_admin`:
+
+```powershell
+# Dentro del contenedor backend:
+docker exec -it rhinopower-backend-1 python scripts/reset_super_admin.py
+```
+
+El script:
+- Lee `SUPER_ADMIN_PASSWORD` del `.env` activo.
+- Actualiza `hashed_password` en la BD.
+- Establece `is_temporary=True` — el Super Admin debe cambiar la contraseña en el siguiente login.
+- Nunca elimina ni recrea el usuario (usa `UPDATE`).
+
+### Panel de Licenciamiento (/superadmin/licencia)
+
+Solo accesible con rol `super_admin`. Se accede desde el ítem **Licencias** en la parte inferior del sidebar (invisible para el rol `admin`).
+
+El panel contiene tres secciones:
+
+**Gimnasio** — nombre, contacto, email. Editable con botón **Editar**.
+
+**Licencia** — plan comercial activo y fechas de vigencia.
+- Botón **Cambiar**: selector de plan (`starter`, `professional`, `premium`).
+- Botón **Fechas**: edita `valid_from` y `valid_until` (dejar vacío para licencia sin vencimiento).
+
+**Módulos** — lista de todos los módulos disponibles con toggle switch.
+- Badge **Plan**: módulo incluido en el plan contratado.
+- Badge **Addon**: módulo activado manualmente fuera del plan.
+- Toggle: activa o desactiva el módulo de forma inmediata. No requiere reiniciar contenedores.
+
+### Activación y desactivación de módulos
+
+1. Iniciar sesión como `super_admin` → **Licencias** → sección **Módulos**.
+2. Usar el toggle switch del módulo deseado.
+3. El cambio se persiste en `gym_modules` y el caché en memoria se invalida de inmediato.
+4. El Admin del gimnasio verá el módulo activo o bloqueado en su próxima request.
+
+Módulos desactivados:
+- Backend: endpoints retornan HTTP 403 con mensaje "Módulo no disponible en tu plan actual".
+- Frontend: el ítem desaparece del sidebar en el próximo ciclo de `getFeatures()`.
+
+### Cambio de plan comercial
+
+1. Sección **Licencia** → botón **Cambiar** → seleccionar plan → confirmar.
+2. El sistema recalcula `gym_modules`: activa los módulos del nuevo plan, marca los que salen del plan como `source='addon'` (permanecen activos).
+3. Revisar manualmente la sección **Módulos** y desactivar los addons que no deban incluirse en el nuevo plan.
+
+### Consideraciones de despliegue
+
+| Escenario | Comportamiento | Acción requerida |
+|---|---|---|
+| Instalación limpia (volumen vacío) | Seed crea `super_admin` con `SUPER_ADMIN_PASSWORD`. | Ninguna. Flujo normal. |
+| Upgrade sobre instalación F1–F3 | Migraciones idempotentes. Sin pérdida de datos históricos. | Ninguna. |
+| Upgrade con `super_admin` ya en BD | Seed omite el usuario existente. La contraseña puede no coincidir. | Ejecutar `reset_super_admin.py` antes del primer login del ISV. |

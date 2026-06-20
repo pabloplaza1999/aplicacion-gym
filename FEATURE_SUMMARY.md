@@ -619,7 +619,7 @@ Sin cambios de código. Sesión de definición de producto y arquitectura de pla
 - F6 Digital & Access (M13–18): P-06 App Móvil, P-05 Hardware, P-08 Avanzada
 - F7 Intelligence (M19–24): P-09 IA Predictiva, API pública
 
-🔧 f4-c-licensing **F4-C — Super Admin Licensing y Gestión de Módulos.** · **Estado:** Implementado · Pendiente Paso 5
+🔧 f4-c-licensing **F4-C — Super Admin Licensing y Gestión de Módulos.** · **Estado:** Implementado · Probado · Auditado · Aprobado
 
 Sistema de licenciamiento comercial y control de módulos Premium desde UI de Super Admin. El ISV (desarrollador) puede activar/desactivar módulos por gimnasio desde el panel `/superadmin/licencia`, sin modificar `.env` ni código. Los operadores del gimnasio (Admin) no pueden modificar su propia configuración de módulos.
 
@@ -686,6 +686,90 @@ Sistema de licenciamiento comercial y control de módulos Premium desde UI de Su
 | `frontend/src/contexts/AuthContext.tsx` | `+role: UserRole` en `AuthState` y `parseToken`; A5 backward compat |
 | `frontend/src/App.tsx` | `+SuperAdminGuard`; `+roleRequired` en `NAV_BOTTOM`; ruta `/superadmin/licencia` |
 | `.env.example` | `+SUPER_ADMIN_PASSWORD`, `+GYM_NAME`, `+GYM_PLAN` |
+
+### Validacion (f4-c-licensing)
+- **Paso 5 (PASS con riesgos):** 35 tests. Sin defectos bloqueantes. Riesgos TD-67 a TD-70 registrados y diferidos.
+- **Paso 5.5 (PASS con riesgos):** 22 tests de datos. Migración idempotente verificada. Compatibilidad con instalaciones previas a F4-C confirmada. Cero pérdida de datos históricos.
+- **Paso 6 (Aprobada con observaciones):** calidad de código correcta. R-01/R-02 (Docker desactualizado) y R-04 (reset manual de contraseña en volumen existente) identificados como riesgos operativos. Resueltos antes del Paso 7.
+- **Despliegue operativo (commit c3eb5b3):** migraciones ejecutadas sin errores sobre gym.db con datos históricos. Tablas `gyms`, `gym_licenses`, `gym_modules` creadas. 9 módulos en cache. `GET /api/superadmin/panel` responde 200.
+
+---
+
+### Procedimiento de primer acceso (f4-c-licensing)
+
+1. Asegurarse de que `.env` contenga `SUPER_ADMIN_PASSWORD`, `GYM_NAME` y `GYM_PLAN`.
+2. Reconstruir imágenes: `docker compose build && docker compose up -d`.
+3. Abrir `http://localhost` e iniciar sesión con usuario `super_admin` y la contraseña definida en `SUPER_ADMIN_PASSWORD`.
+4. El sistema redirige a `/change-password` — acceso al resto de la app bloqueado hasta completar el cambio.
+5. Ingresar y confirmar la nueva contraseña definitiva.
+6. Navegar a `http://localhost/superadmin/licencia` — el panel de licenciamiento muestra el gimnasio, la licencia activa y los módulos.
+
+---
+
+### Diferencia entre SUPER_ADMIN_PASSWORD y contraseña en BD
+
+`SUPER_ADMIN_PASSWORD` tiene dos usos exclusivos, igual que `ADMIN_INITIAL_PASSWORD`:
+
+| Cuándo se usa | Descripción |
+|---|---|
+| Seed inicial (`_seed_super_admin_user`) | Primer arranque sin usuario `super_admin` → crea `admin_users` con esta contraseña y `is_temporary=True`. Si el usuario ya existe, el seed se salta silenciosamente. |
+| Reset manual (`reset_super_admin.py`) | Restablece la contraseña del super_admin existente al valor de `SUPER_ADMIN_PASSWORD` con `is_temporary=True`. |
+
+**No se usa en runtime:** la contraseña activa del Super Admin vive en `admin_users.hashed_password` (DB). Cambiar `SUPER_ADMIN_PASSWORD` en `.env` después del primer login no tiene ningún efecto hasta la próxima ejecución de `reset_super_admin.py`.
+
+**Caso especial (volumen existente con super_admin previo):** si la BD ya tenía un usuario `super_admin` de una sesión de pruebas anterior, el seed lo omite y la contraseña en BD puede no coincidir con `SUPER_ADMIN_PASSWORD`. Ejecutar `reset_super_admin.py` para sincronizarlas. TD-71.
+
+---
+
+### Reset de contraseña de emergencia (reset_super_admin.py)
+
+Si el ISV pierde acceso al Super Admin o necesita restablecer la contraseña:
+
+```bash
+# Dentro del contenedor backend:
+docker exec -it rhinopower-backend-1 python scripts/reset_super_admin.py
+
+# O en entorno local con virtualenv activo (desde backend/):
+python scripts/reset_super_admin.py
+```
+
+El script:
+- Actualiza `hashed_password` al hash de `SUPER_ADMIN_PASSWORD` del `.env`.
+- Establece `is_temporary=True` — el Super Admin debe cambiar la contraseña en el siguiente login.
+- Nunca elimina ni recrea el usuario (usa `UPDATE`, no `DELETE+INSERT`).
+- Falla con error descriptivo si `SUPER_ADMIN_PASSWORD` no está configurada.
+
+---
+
+### Flujo de activacion y desactivacion de modulos
+
+1. Iniciar sesión como `super_admin` en `http://localhost`.
+2. Navegar a **Licencias** en el sidebar (solo visible para `super_admin`).
+3. En la sección **Módulos**: cada módulo tiene un toggle switch.
+4. Al activar/desactivar, el cambio se persiste en `gym_modules` y se invalida el caché en memoria.
+5. El módulo queda disponible o bloqueado para el Admin del gimnasio en la próxima request.
+6. Los módulos incluidos en el plan aparecen con badge **Plan**; los activados manualmente fuera del plan aparecen con badge **Addon**.
+
+---
+
+### Flujo de cambio de plan
+
+1. En el panel de Licencias, sección **Licencia** → botón **Cambiar**.
+2. Seleccionar el nuevo plan (`starter`, `professional`, `premium`).
+3. Al confirmar: `gym_modules` se recalcula — los módulos cubiertos por el plan nuevo se activan; los que salen del plan pasan a `source='addon'` pero permanecen `active=True` (TD-68).
+4. El ISV debe revisar manualmente los módulos addon post-downgrade y desactivar los que no correspondan.
+
+---
+
+### Consideraciones de despliegue para futuras instalaciones
+
+**Instalacion limpia (volumen vacio):** el seed `_seed_super_admin_user` crea el usuario `super_admin` con la contraseña de `SUPER_ADMIN_PASSWORD` y `is_temporary=True`. Flujo normal de primer acceso.
+
+**Upgrade sobre volumen existente sin F4-C:** el startup ejecuta automáticamente las migraciones `role`/`gym_id` en `admin_users`, el seed de `gyms`/`gym_licenses`/`gym_modules` desde `.env`, y el seed del `super_admin`. Compatible con datos históricos de F1–F3.
+
+**Upgrade sobre volumen con super_admin pre-existente (sesiones de prueba o deploy anterior):** el seed detecta que el usuario existe y lo omite. La contraseña en BD puede no coincidir con `SUPER_ADMIN_PASSWORD`. Ejecutar `reset_super_admin.py` antes del primer acceso. TD-71.
+
+**Deuda tecnica generada:** TD-67 (`gym_id` sin FK en SQLite), TD-68 (módulos addon post-downgrade sin alerta visual), TD-69 (`_GYM_ID=1` hardcoded), TD-70 (toggle retorna 404 para module_key inválido), TD-71 (seed omite super_admin existente con contraseña desconocida).
 
 ---
 

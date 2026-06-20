@@ -16,9 +16,9 @@ Siempre desplegar primero en el cliente de menor riesgo operativo. Validar compl
 
 Mantener actualizado manualmente tras cada despliegue.
 
-| Cliente | Tag en producción | BIND_ADDR | Topología | Módulos Premium activos |
-|---|---|---|---|---|
-| Rhinopower | `v1.1-rhinopower` | `127.0.0.1` | PC única | `MODULE_NOTIFICATIONS`, `MODULE_BODY_TRACKING` |
+| Cliente | Tag en producción | BIND_ADDR | Topología | Plan | Módulos activos (via panel) |
+|---|---|---|---|---|---|
+| Rhinopower | commit `c3eb5b3` (F4-C) | `127.0.0.1` | PC única | `professional` | Store, Body Tracking, Analytics (BD), Access Control (addon) |
 
 ---
 
@@ -34,7 +34,10 @@ Cada instalación tiene su propio `.env`. Nunca compartir variables entre client
 | `DATABASE_URL` | Sí | `sqlite:////app/data/gym.db` (invariante — no modificar). |
 | `CORS_ORIGINS` | Sí | Acorde a `BIND_ADDR`. |
 | `VITE_API_URL` | Solo multi-dispositivo | Requiere rebuild del frontend si cambia. Ej: `http://192.168.1.10:8000`. |
-| Feature flags | Según plan | Ver `PRODUCT_MODULES.md`. Ej: `MODULE_NOTIFICATIONS=true`. |
+| Feature flags `MODULE_*` | Según plan | `MODULE_NOTIFICATIONS`, `MODULE_BODY_TRACKING`, `MODULE_STORE`. Usados como semilla inicial en el arranque; a partir de F4-C la gestión en caliente se realiza desde el panel `/superadmin/licencia`. |
+| `SUPER_ADMIN_PASSWORD` | Sí (F4-C+) | Contraseña inicial del ISV (`super_admin`). Distinta a `ADMIN_INITIAL_PASSWORD`. No vacía en producción. Solo actúa en seed y en `reset_super_admin.py`. |
+| `GYM_NAME` | Sí (F4-C+) | Nombre del gimnasio — seed inicial de `gyms`. Sin efecto si el registro ya existe en BD. |
+| `GYM_PLAN` | Sí (F4-C+) | Plan inicial: `starter`, `professional` o `premium`. Sin efecto si `gym_licenses` ya existe. |
 
 ---
 
@@ -170,11 +173,20 @@ Validar rollback: backend healthy, frontend carga, conteos de datos coinciden.
 Procedimiento para instalar en un primer cliente o en un cliente adicional.
 
 1. Generar `SECRET_KEY` única (comando en §2). **No reutilizar** la de ningún cliente existente.
-2. Crear `.env` desde `.env.example`. Configurar todas las variables de §2.
-3. Configurar feature flags según el plan contratado (ver `PRODUCT_MODULES.md`).
+2. Crear `.env` desde `.env.example`. Configurar todas las variables de §2 incluyendo las F4-C: `SUPER_ADMIN_PASSWORD`, `GYM_NAME`, `GYM_PLAN`.
+3. Configurar `GYM_PLAN` según el plan contratado. Los feature flags `MODULE_*` solo influyen en el seed inicial; la gestión en caliente se realiza desde el panel de licenciamiento.
 4. Ejecutar §3 (pre-deploy) + §4 completo + §5 (validación).
-5. Añadir entrada a la tabla §1 con tag, topología y módulos activos.
-6. Registrar en `docs/EMPAQUETADO.md` si el cliente recibe kit físico.
+5. Iniciar sesión como `super_admin` y cambiar la contraseña temporal. Verificar que el panel `/superadmin/licencia` muestre el gimnasio, la licencia y los módulos correctos.
+6. Añadir entrada a la tabla §1 con tag, topología, plan y módulos activos.
+7. Registrar en `docs/EMPAQUETADO.md` si el cliente recibe kit físico.
+
+### Nota F4-C — Upgrade sobre instalación existente con super_admin previo
+
+Si la BD ya contiene un usuario `super_admin` (por ejemplo, de una sesión de pruebas o de un deploy anterior), el seed lo omite y la contraseña puede no coincidir con `SUPER_ADMIN_PASSWORD`. Ejecutar antes del primer acceso:
+
+```powershell
+docker exec -it rhinopower-backend-1 python scripts/reset_super_admin.py
+```
 
 ---
 

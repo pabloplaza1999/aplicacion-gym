@@ -8,6 +8,20 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 
 ---
 
+## TD-71 — Seed de super_admin omite usuario existente — contraseña puede no coincidir con SUPER_ADMIN_PASSWORD
+
+- **ID:** TD-71
+- **Estado:** Abierto — workaround documentado.
+- **Descripción:** `_seed_super_admin_user()` en `init_db.py` es idempotente: si ya existe un usuario `super_admin` en `admin_users`, retorna sin hacer nada. En una instalación con volumen existente (upgrade o sesión de pruebas previa), el usuario puede tener una contraseña desconocida que no coincide con `SUPER_ADMIN_PASSWORD` del `.env` actual. El ISV no puede hacer login hasta ejecutar `reset_super_admin.py`.
+- **Impacto:** Bloqueo operativo en upgrades sobre volúmenes con `super_admin` previo. No afecta instalaciones limpias.
+- **Detectado en:** Despliegue F4-C sobre volumen Rhinopower con datos de Paso 5 (pruebas).
+- **Módulos afectados:** `backend/app/database/init_db.py` (`_seed_super_admin_user`), `backend/scripts/reset_super_admin.py`.
+- **Prioridad:** Media.
+- **Workaround:** Ejecutar `docker exec -it rhinopower-backend-1 python scripts/reset_super_admin.py` después de cualquier upgrade donde el log de startup NO muestre `[OK] Seed: usuario super_admin creado`.
+- **Recomendación futura:** Añadir al log de startup una línea explícita cuando el seed es omitido (`[INFO] super_admin ya existe — seed omitido`) para que el ISV pueda detectar el caso sin revisar el log completo.
+
+---
+
 ## TD-70 — `PATCH /superadmin/modules/{module_key}` retorna 404 para module_key invalido (deberia ser 422)
 
 - **ID:** TD-70
