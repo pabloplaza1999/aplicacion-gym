@@ -11,3 +11,6 @@ frontend/dist/
 frontend/node_modules/
 # Word temporary files
 ~$*.docx
+
+# IDE / Claude Code local config
+.claude/launch.json

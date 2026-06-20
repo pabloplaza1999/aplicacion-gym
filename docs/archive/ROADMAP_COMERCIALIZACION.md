@@ -1,5 +1,13 @@
 # ROADMAP_COMERCIALIZACION.md
 
+> **ARCHIVADO — 2026-06-19**
+> Este documento describe el roadmap original pre-plataforma (F0–F9 con modelo dual Local/Gestionado).
+> Su estado actual contradice el proyecto real: F4 aquí = PostgreSQL; F4 real = Platform Ready (feature flags).
+> Contenido migrado activo:
+> - §5 (subagente security-auditor + Human Gate) → `PLATFORM_ARCHITECTURE.md`
+> - §8 (estrategia de modelo de IA por fase) → `PRODUCT_ROADMAP.md`
+> Referencias históricas a este archivo en `docs/BASELINE_SEGURIDAD.md` y `docs/RELEASE_F1_BLOQUE_A.md` son válidas como registro de lo ejecutado.
+
 Hoja de ruta para llevar el sistema de gestión de gimnasio desde su estado actual
 (herramienta local madura) hasta un **producto comercializable en dos ediciones**,
 incluyendo la edición premium con web, app móvil y pagos online de membresía.

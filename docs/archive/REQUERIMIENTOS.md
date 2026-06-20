@@ -1,5 +1,10 @@
 # REQUERIMIENTOS.md
 
+> **ARCHIVADO — 2026-06-19**
+> Este documento describe el estado de requerimientos de las fases F1–F3 del proyecto original.
+> El contenido marcado como "⏳ Pendiente" aquí lleva meses implementado.
+> La fuente de verdad del estado actual es `FEATURE_SUMMARY.md`.
+
 ## Fase 1 ✅ Completada
 **Clientes:** CRUD + búsqueda (nombre/teléfono) + soft delete (is_active)
 Campos: nombre, teléfono, documento, notas, fecha_registro
