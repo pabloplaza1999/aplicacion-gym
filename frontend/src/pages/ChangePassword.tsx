@@ -43,7 +43,7 @@ export default function ChangePassword() {
           <div className="text-center space-y-1">
             <h1 className="text-lg font-semibold text-white">Cambia tu contraseña</h1>
             <p className="text-sm text-gray-400">
-              Es tu primer acceso. Debes establecer una contraseña personal antes de continuar.
+              Establece una nueva contraseña para tu cuenta.
             </p>
           </div>
 
