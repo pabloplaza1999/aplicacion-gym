@@ -18,7 +18,7 @@ Mantener actualizado manualmente tras cada despliegue.
 
 | Cliente | Tag en producción | BIND_ADDR | Topología | Plan | Módulos activos (via panel) |
 |---|---|---|---|---|---|
-| Rhinopower | commit `c3eb5b3` (F4-C) | `127.0.0.1` | PC única | `professional` | Store, Body Tracking, Analytics (BD), Access Control (addon) |
+| Rhinopower | commit `5f4567f` (F4-C + auth fixes) | `127.0.0.1` | PC única | `professional` | Store, Body Tracking, Analytics (BD), Access Control (addon) |
 
 ---
 

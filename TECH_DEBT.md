@@ -426,7 +426,7 @@ Prioridad: **Alta** (afecta datos o reglas de negocio) · **Media** (afecta UX o
 | TD-48 | Tabla `customers`, `CustomerService` y `sales.customer_id` mantenidos transitoriamente (Cliente Único Phase 1) | Baja |
 | TD-49 | `CreditPayment` definido en `customer.py`, importado por `member_repository.py` — acoplamiento cruzado | Baja |
 | TD-50 | ~~`POST /store/sales` acepta `customer_id` (member_id) inexistente — SQLite FK=0, sin validación explícita~~ | ✅ RESUELTO |
-| TD-51 | Validación de actualización de producción para Cliente Único Phase 1 — pendiente auditoría sobre datos reales | Alta |
+| TD-51 | ~~Validación de actualización de producción para Cliente Único Phase 1 — pendiente auditoría sobre datos reales~~ | ✅ RESUELTO |
 | TD-52 | ~~`get_memberships_by_status` y `get_members_by_plan` en `dashboard_repository.py` usan `datetime.utcnow()` — StatCards y tabla "Membresías por plan" incorrectos después de las 19:00 Bogotá~~ | ✅ RESUELTO |
 | TD-53 | ~~`_enrich_membership` usa `datetime.utcnow()` para `days_remaining` — muestra días negativos desde las 19:00 Bogotá en el último día~~ | ✅ RESUELTO |
 | TD-54 | ~~`_has_active_valid_voucher` y `get_active_voucher_warning` usan `datetime.utcnow()` — valera considerada inválida 5h antes de expirar localmente~~ | ✅ RESUELTO |
@@ -785,23 +785,18 @@ Ciclo completo Paso 1→7. Estado técnico: **Implementado · Probado · Auditad
 
 ---
 
-## TD-51 — Validación de actualización de producción para Cliente Único Phase 1
+## TD-51 — Validación de actualización de producción para Cliente Único Phase 1 ✅ RESUELTO
 
 - **ID:** TD-51
-- **Título:** El despliegue de Cliente Único Phase 1 en la instalación productiva del gimnasio no ha sido validado sobre los datos reales.
-- **Descripción:** Cliente Único Phase 1 fue validada en el entorno de desarrollo (base de datos de desarrollo, 0 ventas, 0 clientes en `customers`). La instalación productiva puede tener un estado diferente. Antes del deploy en producción se deben ejecutar las validaciones V1–V4 definidas en el Paso 5.5 y verificar que no hay clientes solo-tienda con ventas asociadas (riesgo de pérdida de atribución).
-- **Riesgo:** Alto si se despliega sin auditoría previa y existen ventas con `customer_id` de clientes sin `member_id`.
-- **Impacto:** Ventas de clientes solo-tienda quedarían sin atribución (`customer_name=null`) en cartera y reportes post-deploy.
-- **Módulos afectados:** `_migrate_sales_to_member_id()` en `init_db.py`, tabla `sales`, tabla `customers`.
-- **Prioridad:** Alta — bloquea el deploy en producción.
-- **Checklist pre-deploy (Paso 5.5):**
-  1. `SELECT COUNT(*) FROM sales WHERE customer_id IS NOT NULL AND member_id IS NULL` — cantidad a migrar.
-  2. `SELECT COUNT(*) FROM customers WHERE member_id IS NULL` — clientes solo-tienda (si > 0, evaluar impacto).
-  3. `SELECT COUNT(*) FROM sales WHERE status='CANCELLED' AND ...` — ventas a purgar.
-  4. Backup manual previo al rebuild.
-  5. Rebuild + recreate + verificar logs de startup.
-  6. Validar cartera, clientes y dashboard post-deploy.
-- **Recomendación:** Ejecutar `/paso5.5` sobre la instalación productiva antes de hacer `docker compose build backend` en producción.
+- **Estado:** Resuelto (2026-06-21). Deploy ejecutado en Rhinopower (portátil de producción).
+- **Ejecutado:**
+  1. Checklist pre-deploy completado sobre datos reales (1 venta, 1 cliente, 54 miembros).
+  2. Cliente solo-tienda "yelineth" detectado sin `member_id` → venta de $8.000 aceptada como pendiente de reasignación manual post-deploy.
+  3. Backup previo generado: `gym_PRE_upgrade_2026-06-21_12-40.db` (290 KB).
+  4. Migración de volumen `aplicacion-gym_db-data` → `rhinopower_db-data` via `upgrade.bat`.
+  5. Build completo: `rhinopower/backend:1.0`, `rhinopower/frontend:1.0`, `rhinopower/scheduler:1.0`.
+  6. Startup logs confirmaron: `[OK] Migración: columna sales.member_id añadida`, `[OK] Cliente Único: 0/1 ventas migradas a member_id`, `[OK] Seed: usuario admin creado`, `[OK] Licenciamiento: gimnasio 'Rhinopower' inicializado con plan 'professional'`, `[OK] Seed: usuario super_admin creado`, `[OK] Caché de módulos cargado (9 entradas)`.
+- **Pendiente menor resuelto:** venta de $8.000 (cliente "yelineth") reasignada manualmente desde Tienda (2026-06-21).
 
 ---
 

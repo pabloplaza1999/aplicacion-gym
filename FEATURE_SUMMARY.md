@@ -861,14 +861,14 @@ Gym Platform (línea Producto)        Rhinopower (línea Cliente)
 ─────────────────────────────        ──────────────────────────
 F4-A ✅ Cerrada (9f2b12b)            Core v1.1 ✅ En producción
 F4-B ✅ Cerrada (62844be)            tag: v1.1-rhinopower (441f5d3)
-F4   ✅ Técnicamente completada      TD-51 ⏳ Pendiente ejecución
+F4   ✅ Técnicamente completada      TD-51 ✅ Ejecutado (2026-06-21)
 F5   🔒 No autorizado aún
 ```
 
 > TD-51 pertenece exclusivamente a la línea Rhinopower. No bloquea ni condiciona la evolución de Gym Platform.
 
 ### Actividades operativas pendientes — Línea Rhinopower
-- **TD-51** — Deploy producción Cliente Único Phase 1: ejecutar checklist sobre datos reales antes de `docker compose build backend`. Verificar V1–V4 sobre `customers`, `sales`, `members`. **DESBLOQUEADO** (TD-04, TD-50, TD-42, TD-35 completados). Programar ventana de despliegue cuando corresponda.
+- **TD-51** ✅ — Deploy producción Rhinopower ejecutado (2026-06-21). Commit `5f4567f`. Checklist pre-deploy completado. Backup generado. Migraciones OK. Venta $8.000 ("yelineth") reasignada manualmente. Cierre completo.
 
 ### Estado de cierre Edición Local
 ```
@@ -876,7 +876,7 @@ F5   🔒 No autorizado aún
 ✅ TD-50  validación FK create_sale — resuelto
 ✅ TD-42  rate limiting login custom middleware — resuelto (6/6 PASS)
 ✅ TD-35  actualización deps CVEs — resuelto (cryptography pin justificado → TD-64)
-⏳ TD-51  deploy producción — DESBLOQUEADO, pendiente ventana de despliegue
+✅ TD-51  deploy producción — EJECUTADO (2026-06-21, commit 5f4567f)
 ```
 
 ### Backlog funcional
