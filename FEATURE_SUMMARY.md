@@ -21,6 +21,8 @@
 🔧 ui-redesign Rediseño visual UI/UX Pro Max: tokens energy/success en tailwind.config.js, Barlow Condensed añadido, badge-active→verde semántico, badge-expiring→naranja, scrollbar refinada, .card con hover transition-all, barras de progreso h-1→h-2, sidebar activo con gradiente from-brand-500/20, indicador lateral h-4→h-5, hover en filas de renovaciones Dashboard.
 🔧 valera-a-mensual Cambio de valera a plan mensual con advertencia: GET /members/{id}/active-voucher-warning retorna info de valera activa (plan, restantes, vence). create_membership y renew_membership aceptan force=True para desactivar valera atómicamente al cambiar a plan no-voucher. Frontend (Members.tsx) muestra banner naranja con datos de la valera y botón "Confirmar cambio" antes de proceder; cancelar descarta la acción. Sin cambios de esquema de BD.
 🔧 valeras-faseC Frontend asistencia/valeras: tipos CheckInResult y VoucherStatus (types/index.ts); api checkInAttendance (POST /attendance/check-in) y getVoucherStatus (GET /attendance/voucher-status/{document}). Nueva página pages/Attendance.tsx (input cédula, botón registrar ingreso + consultar valera, banner éxito/error con detail verbatim, visualización totales/consumidos/restantes/vencimiento/estado derivado vigente·agotada·vencida solo voucher). Navegación: ruta /attendance + acceso en App.tsx (sidebar real) y Navbar.tsx. Sin tocar backend salvo consumo de endpoints existentes; dashboard, pagos y current-membership sin cambios.
+🔧 fix-cambiar-contrasena-voluntario Cambio voluntario de contraseña sin primer login: botón candado (🔒) en footer del sidebar (App.tsx) para admin y super_admin; navega a `/change-password`. Subtítulo de ChangePassword.tsx cambiado a texto genérico (era específico de primer acceso). Sin cambios de backend — `POST /api/auth/change-password` ya aceptaba tokens no temporales. Commit: 0df8307.
+🔧 fix-cancelar-change-password Botón "Cancelar" en ChangePassword.tsx visible solo cuando `!isTemporary` (acceso voluntario). En primer acceso forzado el botón no aparece; en acceso voluntario desde sidebar vuelve a la pantalla anterior con `navigate(-1)`. `isTemporary` leído de `useAuth()` — sin cambios de backend ni de AuthContext.
 
 ## Endpoints activos
 
@@ -514,7 +516,7 @@ POST /api/auth/change-password — requiere Bearer token (allows is_temporary); 
 | `frontend/src/contexts/AuthContext.tsx` | AuthProvider, useAuth, TOKEN_KEY, parseToken, loadInitialState |
 | `frontend/src/components/ProtectedRoute.tsx` | Guard de React Router v6 (requiere token; redirige a /change-password si is_temporary) |
 | `frontend/src/pages/Login.tsx` | Pantalla de login con toggle show/hide, banner sesión expirada |
-| `frontend/src/pages/ChangePassword.tsx` | Pantalla cambio de contraseña (primer login); recibe token fresco sin re-login |
+| `frontend/src/pages/ChangePassword.tsx` | Pantalla cambio de contraseña (primer login y voluntario); recibe token fresco sin re-login; botón "Cancelar" visible solo cuando `!isTemporary` |
 
 ### Archivos modificados (f2-auth-staff)
 | Archivo | Cambio |
@@ -526,7 +528,7 @@ POST /api/auth/change-password — requiere Bearer token (allows is_temporary); 
 | `backend/app/main.py` | auth router (público); `_protected` aplicado a 10 routers; `Authorization` en CORS allow_headers |
 | `frontend/src/types/index.ts` | LoginRequest, TokenResponse, ChangePasswordRequest |
 | `frontend/src/services/api.ts` | `req()` añade header Bearer; 401 → redirect a /login?expired=1; loginUser(), changePassword() |
-| `frontend/src/App.tsx` | AuthProvider wrapper; rutas /login y /change-password fuera de AppLayout; logout + username en sidebar |
+| `frontend/src/App.tsx` | AuthProvider wrapper; rutas /login y /change-password fuera de AppLayout; logout + username + botón candado cambio voluntario de contraseña en sidebar |
 
 ---
 

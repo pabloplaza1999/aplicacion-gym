@@ -9,7 +9,7 @@ export default function ChangePassword() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const { username, login } = useAuth()
+  const { username, login, isTemporary } = useAuth()
   const navigate = useNavigate()
 
   async function handleSubmit(e: FormEvent) {
@@ -83,6 +83,15 @@ export default function ChangePassword() {
             >
               {loading ? 'Guardando...' : 'Guardar contraseña'}
             </button>
+            {!isTemporary && (
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="w-full text-gray-500 hover:text-gray-300 text-sm py-1 transition-colors"
+              >
+                Cancelar
+              </button>
+            )}
           </form>
         </div>
       </div>
